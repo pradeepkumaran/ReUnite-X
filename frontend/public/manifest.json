@@ -1,0 +1,17 @@
+{
+  "short_name": "REUNITE-X",
+  "name": "REUNITE-X Disaster Response Reunification",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#FFFFFF",
+  "theme_color": "#DC2626",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "categories": ["utilities", "emergency", "medical"]
+}
