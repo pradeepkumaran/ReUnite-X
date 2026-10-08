@@ -1,0 +1,153 @@
+{
+  "info": {
+    "_postman_id": "7ec027b0-7af0-47a7-8a43-e10df34cf483",
+    "name": "REUNITE-X API",
+    "description": "FastAPI endpoints. Set baseUrl and accessToken; authority routes require an authority/admin role.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8000/api/v1" },
+    { "key": "accessToken", "value": "" },
+    { "key": "caseId", "value": "" },
+    { "key": "matchId", "value": "" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      { "key": "token", "value": "{{accessToken}}", "type": "string" }
+    ]
+  },
+  "item": [
+    {
+      "name": "Cases",
+      "item": [
+        {
+          "name": "Create case",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/cases",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"type\":\"missing\",\"consent_given\":true,\"person\":{\"full_name\":\"Synthetic Example\",\"approximate_age\":30,\"gender\":\"unknown\",\"description\":\"Synthetic seed record\",\"clothing_details\":\"Blue jacket\"}}",
+              "options": { "raw": { "language": "json" } }
+            }
+          }
+        },
+        {
+          "name": "List cases",
+          "request": { "method": "GET", "url": "{{baseUrl}}/cases" }
+        },
+        {
+          "name": "Get case",
+          "request": { "method": "GET", "url": "{{baseUrl}}/cases/{{caseId}}" }
+        },
+        {
+          "name": "Update case status",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/cases/{{caseId}}/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\":\"reunited\",\"notes\":\"Confirmed by authority\"}",
+              "options": { "raw": { "language": "json" } }
+            }
+          }
+        },
+        {
+          "name": "Upload photo",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/cases/{{caseId}}/photos",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": "" },
+                { "key": "is_primary", "value": "true", "type": "text" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Search",
+      "item": [
+        {
+          "name": "Search cases",
+          "request": { "method": "GET", "url": "{{baseUrl}}/search?q=synthetic" }
+        }
+      ]
+    },
+    {
+      "name": "Offline sync",
+      "item": [
+        {
+          "name": "Batch sync",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/sync/batch",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"cases\":[]}",
+              "options": { "raw": { "language": "json" } }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authority",
+      "item": [
+        {
+          "name": "List pending matches",
+          "request": { "method": "GET", "url": "{{baseUrl}}/matches" }
+        },
+        {
+          "name": "Verify match",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/matches/{{matchId}}/verify",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"notes\":\"Reviewed and verified against identifying details.\",\"notify_family\":true}",
+              "options": { "raw": { "language": "json" } }
+            }
+          }
+        },
+        {
+          "name": "Reject match",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/matches/{{matchId}}/reject",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"reason\":\"Evidence does not support this match.\"}",
+              "options": { "raw": { "language": "json" } }
+            }
+          }
+        },
+        {
+          "name": "Dashboard stats",
+          "request": { "method": "GET", "url": "{{baseUrl}}/dashboard/stats" }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "Send notification",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/notifications/send",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"recipient_target\":\"family@example.org\",\"channel\":\"email\",\"title\":\"Case update\",\"message\":\"Please contact the designated relief authority for a case update.\"}",
+              "options": { "raw": { "language": "json" } }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
