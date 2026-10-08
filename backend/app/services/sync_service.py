@@ -21,7 +21,11 @@ from app.services.case_service import CaseService
 
 class SyncService:
     @staticmethod
-    def process_batch(request: BatchSyncRequest, reporter: Optional[AuthUser] = None) -> BatchSyncResponse:
+    def process_batch(
+        request: BatchSyncRequest,
+        reporter: Optional[AuthUser] = None,
+        decoded_photos: Optional[dict] = None,
+    ) -> BatchSyncResponse:
         results: List[SyncStatusItem] = []
         synced_count = 0
         conflict_count = 0
@@ -68,6 +72,21 @@ class SyncService:
                         resolution = "last_write_wins_server_retained"
 
                     conflict_count += 1
+                    for photo_item in item.photos:
+                        photo_bytes = (decoded_photos or {}).get(photo_item.client_photo_id)
+                        CaseService.add_photo(
+                            case_id=existing_case["id"],
+                            file_name=photo_item.file_name,
+                            mime_type=photo_item.mime_type,
+                            file_size=len(photo_bytes or b""),
+                            is_primary=photo_item.is_primary,
+                            client_photo_id=photo_item.client_photo_id,
+                            photo_bytes=photo_bytes,
+                            can_view_private=bool(
+                                reporter and reporter.role.value in ("authority", "admin", "volunteer")
+                            ),
+                            actor_id=reporter_id,
+                        )
 
                     # Log sync conflict event
                     log_id = str(uuid.uuid4())
@@ -112,12 +131,19 @@ class SyncService:
 
                 # Process attached offline photos
                 for photo_item in item.photos:
+                    photo_bytes = (decoded_photos or {}).get(photo_item.client_photo_id)
                     CaseService.add_photo(
                         case_id=created_case.id,
                         file_name=photo_item.file_name,
                         mime_type=photo_item.mime_type,
-                        file_size=len(photo_item.base64_data or "") if photo_item.base64_data else 1024,
-                        is_primary=photo_item.is_primary
+                        file_size=len(photo_bytes or b""),
+                        is_primary=photo_item.is_primary,
+                        client_photo_id=photo_item.client_photo_id,
+                        photo_bytes=photo_bytes,
+                        can_view_private=bool(
+                            reporter and reporter.role.value in ("authority", "admin", "volunteer")
+                        ),
+                        actor_id=reporter_id,
                     )
 
                 synced_count += 1

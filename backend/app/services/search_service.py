@@ -4,14 +4,16 @@ Multi-criteria search engine supporting demographic filters, radius search via
 the Haversine formula, and automated privacy masking for vulnerable minors.
 """
 import math
+import uuid
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.core.database import db
 from app.core.security import AuthUser
 from app.models.enums import CaseType, CaseStatus, UserRole, GenderType
 from app.schemas.case import PublicCaseSearchItem
 from app.schemas.person import PersonPublicSafeResponse
+from app.services.case_service import _signed_photo_url
 
 
 def _haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -49,7 +51,9 @@ class SearchService:
         user: Optional[AuthUser] = None
     ) -> List[PublicCaseSearchItem]:
         results: List[PublicCaseSearchItem] = []
-        is_privileged = user and user.role in (UserRole.AUTHORITY, UserRole.ADMIN)
+        is_privileged = user and user.role in (
+            UserRole.AUTHORITY, UserRole.ADMIN, UserRole.VOLUNTEER
+        )
 
         for cid, c in db.cases.items():
             # Exclude closed cases from public discovery
@@ -98,30 +102,49 @@ class SearchService:
                 (ph for ph in db.photos.values() if ph["case_id"] == cid and ph.get("is_primary")),
                 None
             )
-            photo_url = primary_photo["storage_path"] if primary_photo else None
+            photo_url = None
 
             # Minor privacy handling
             is_minor = c.get("is_minor", False)
             if is_minor:
                 masked_phone = "[REDACTED - MINOR PROTECTION]"
                 safe_name = "[REDACTED - CONTACT RELIEF AUTHORITY]"
+                public_name = person["full_name"] if is_privileged else "Protected person"
+                public_address = person.get("last_seen_address") if is_privileged else None
+                public_lat = person.get("last_seen_lat") if is_privileged else None
+                public_lng = person.get("last_seen_lng") if is_privileged else None
+                public_age = person_age if is_privileged else None
+                public_vulnerable = person.get("is_vulnerable", False) if is_privileged else False
+                public_vulnerability_reasons = (
+                    person.get("vulnerability_reasons", []) if is_privileged else []
+                )
             else:
                 masked_phone = _mask_phone(person.get("contact_phone"))
-                safe_name = person.get("contact_person_name")
+                safe_name = None
+                public_name = person["full_name"]
+                public_address = person.get("last_seen_address")
+                public_lat = person.get("last_seen_lat")
+                public_lng = person.get("last_seen_lng")
+                public_age = person_age
+                public_vulnerable = person.get("is_vulnerable", False)
+                public_vulnerability_reasons = person.get("vulnerability_reasons", [])
+
+            if is_privileged and primary_photo:
+                photo_url = _signed_photo_url(primary_photo["storage_path"])
 
             safe_person = PersonPublicSafeResponse(
                 id=person["id"],
                 case_id=cid,
-                full_name=person["full_name"],
-                approximate_age=person_age,
+                full_name=public_name,
+                approximate_age=public_age,
                 gender=GenderType(person["gender"]),
                 description=person.get("description"),
                 clothing_details=person.get("clothing_details"),
                 physical_marks=person.get("physical_marks"),
-                last_seen_address=person.get("last_seen_address"),
-                last_seen_lat=person.get("last_seen_lat"),
-                last_seen_lng=person.get("last_seen_lng"),
-                is_vulnerable=person.get("is_vulnerable", False),
+                last_seen_address=public_address,
+                last_seen_lat=public_lat,
+                last_seen_lng=public_lng,
+                is_vulnerable=public_vulnerable,
                 is_minor=is_minor,
                 masked_contact_phone=masked_phone,
                 safe_contact_name=safe_name,
@@ -139,4 +162,15 @@ class SearchService:
                 )
             )
 
+        now_iso = datetime.now(timezone.utc).isoformat()
+        for item in results:
+            db.audit_logs.append({
+                "id": str(uuid.uuid4()),
+                "actor_id": user.id if user else None,
+                "action": "CASE_SEARCH_RESULT_VIEWED",
+                "resource_type": "cases",
+                "resource_id": item.case_id,
+                "changes": {},
+                "created_at": now_iso,
+            })
         return results

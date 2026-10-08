@@ -71,6 +71,12 @@ sequenceDiagram
 
 ---
 
+## Implementation and production readiness
+
+Phases 4–8 now include the Dexie offline queue, server batch sync, AI candidate processing, authority review and status workflow, map/provider integration, notifications, tests, and API/deployment artifacts. Phase 9 configuration is present, but this checkout is **not safe for live disaster data yet**: current case, match, verification, notification, sync, and audit services still use the in-memory development repository. They do not persist to Supabase PostgreSQL across restarts or Render instances. The Supabase schema, RLS policies, pgvector functions, JWT checks, and private Storage adapter are not a substitute for a durable repository implementation. See [deployment readiness](./docs/DEPLOYMENT.md) before running.
+
+Face matching is assistive only. Candidate suggestions remain pending until an authority records a decision; an unavailable email/push provider is reported as `pending` or `failed`, never as delivered.
+
 ## 📂 Monorepo Structure
 
 ```text
@@ -104,14 +110,17 @@ CodeX3-disater/
 │   ├── migrations/
 │   │   ├── 001_initial_schema.sql         # Base tables, enums, sequences
 │   │   ├── 002_pgvector_and_embeddings.sql# Vector extension, HNSW cosine index
-│   │   ├── 003_rls_policies.sql           # Role-based RLS, Minor data masking
-│   │   └── 004_triggers_and_functions.sql # Auditing, timestamp automation
+│   │   ├── 003_rls_policies.sql           # Role-based RLS
+│   │   ├── 004_triggers_and_functions.sql # Auditing, timestamp automation
+│   │   └── 005_private_case_access.sql    # Restrict raw PII and Storage access
 │   ├── seed.sql              # Synthetic test data for local simulation
 │   └── config.toml
 ├── docs/                     # Specifications & Design Documents
 │   ├── ARCHITECTURE.md       # Full architecture & security boundaries
 │   ├── WORKFLOW.md           # End-to-end lifecycle documentation
 │   └── DATABASE.md           # Entity relationship dictionary & RLS matrix
+│   ├── DEPLOYMENT.md         # Environment, release checklist & deployment boundary
+│   └── REUNITE-X.postman_collection.json
 ├── .env.example              # Consolidated environment variable template
 ├── .gitignore
 └── README.md
@@ -131,11 +140,10 @@ CodeX3-disater/
 ## 🚀 Build Phases Roadmap
 
 - [x] **Phase 1: Architecture, Planning & Database Schema** (Architecture diagram, folder layout, pgvector migrations, RLS policies, documentation)
-- [ ] **Phase 2: Backend Foundation** (FastAPI, Supabase Auth integration, CRUD endpoints, Swagger docs)
-- [ ] **Phase 3: Frontend Foundation** (Vite, Tailwind, PWA shell, reporting forms, camera intake)
-- [ ] **Phase 4: Offline Engine** (Dexie.js IndexedDB, background sync queue, idempotent `/sync/batch`)
-- [ ] **Phase 5: AI Multimodal Engine** (OpenCV face detection, embedding vectors, cosine search, weighted fusion scoring)
-- [ ] **Phase 6: Authority Review Dashboard** (Side-by-side inspection, verify/reject workflow, audit trail)
-- [ ] **Phase 7: Geospatial Maps & Notifications** (Swappable Mapbox/Google maps, FCM push & Email fallback)
-- [ ] **Phase 8: Testing & Verification** (Pytest backend suite, Vitest frontend tests, Postman collection, synthetic data seeding)
-- [ ] **Phase 9: Production Deployment** (Vercel frontend, Render backend, Supabase production instance, CI/CD pipeline)
+- [x] **Phases 1–3: Architecture, Backend and Frontend Foundations** (existing baseline)
+- [x] **Phase 4: Offline Engine** (Dexie IndexedDB queue, retry/backoff, idempotent `/sync/batch`)
+- [x] **Phase 5: AI Multimodal Engine** (InsightFace/ArcFace pipeline, candidate scoring, duplicate flags; durable pgvector execution remains blocked by the repository gap below)
+- [x] **Phase 6: Authority Review Dashboard** (private dossier, authority verification/rejection, audit records, reunification lifecycle)
+- [x] **Phase 7: Geospatial Maps & Notifications** (Mapbox/Google provider choice, private photo URL flow, FCM/email adapters)
+- [x] **Phase 8: Testing & Verification** (pytest, Vitest, Postman collection, synthetic fixtures, CI)
+- [ ] **Phase 9: Production Deployment** (Vercel/Render configuration supplied; do not launch with real reports until the durable PostgreSQL repository is implemented and tested)

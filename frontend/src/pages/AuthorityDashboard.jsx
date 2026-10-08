@@ -17,6 +17,7 @@ import { useAuth } from '../context/AuthContext';
 export default function AuthorityDashboard() {
   const { user } = useAuth();
   const [matches, setMatches] = useState([]);
+  const [followups, setFollowups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [verificationNotes, setVerificationNotes] = useState('');
@@ -37,9 +38,38 @@ export default function AuthorityDashboard() {
     }
   };
 
+  const fetchFollowups = async () => {
+    try {
+      const response = await api.get('/cases');
+      setFollowups(response.data.filter(item =>
+        ['verified', 'notified', 'reunited'].includes(item.status)
+      ));
+    } catch (err) {
+      console.warn('Case follow-up fetch error:', err);
+    }
+  };
+
   useEffect(() => {
     fetchMatches();
+    fetchFollowups();
   }, []);
+
+  const updateFollowupStatus = async (caseId, status) => {
+    setActionLoading(true);
+    try {
+      await api.patch(`/cases/${caseId}/status`, {
+        status,
+        notes: status === 'reunited'
+          ? 'Authority confirmed safe family reunification.'
+          : 'Authority closed the completed reunification case.',
+      });
+      await fetchFollowups();
+    } catch (err) {
+      alert(`Could not update case status: ${err.response?.data?.detail || err.message}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const handleVerify = async (matchId) => {
     if (!verificationNotes.trim()) {
@@ -48,11 +78,13 @@ export default function AuthorityDashboard() {
     }
     setActionLoading(true);
     try {
-      await api.post(`/matches/${matchId}/verify`, {
+      const response = await api.post(`/matches/${matchId}/verify`, {
         notes: verificationNotes,
         notify_family: true,
       });
-      alert("Match officially VERIFIED. Case status updated and family notified.");
+      alert(response.data.family_notified
+        ? "Match verified by an authority. The family notification was delivered."
+        : "Match verified by an authority. Family notification is pending; follow up through the relief team.");
       setVerificationNotes('');
       fetchMatches();
     } catch (err) {
@@ -77,6 +109,9 @@ export default function AuthorityDashboard() {
     }
   };
 
+  const missingCase = selectedMatch?.missing_case_details;
+  const foundCase = selectedMatch?.found_case_details;
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       {/* Top Banner */}
@@ -94,6 +129,36 @@ export default function AuthorityDashboard() {
           <span>Active Officer: {user?.full_name || 'Capt. Vikram Singh (NDRF)'}</span>
         </div>
       </div>
+
+      <section className="card-white space-y-3">
+        <div>
+          <h2 className="font-black text-slate-900">Reunification follow-up</h2>
+          <p className="text-xs text-slate-600">Only an authorized officer can advance verified cases to reunited and closed.</p>
+        </div>
+        {followups.length === 0 ? (
+          <p className="text-sm text-slate-500">No verified cases need follow-up.</p>
+        ) : followups.map(item => (
+          <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t pt-3">
+            <div>
+              <p className="font-semibold">{item.case_number} · {item.person_name}</p>
+              <p className="text-xs text-slate-500 capitalize">{item.type} · {item.status.replaceAll('_', ' ')}</p>
+            </div>
+            {item.status === 'reunited' ? (
+              <button
+                disabled={actionLoading}
+                onClick={() => updateFollowupStatus(item.id, 'closed')}
+                className="btn-outline-emergency text-sm"
+              >Close case</button>
+            ) : (
+              <button
+                disabled={actionLoading}
+                onClick={() => updateFollowupStatus(item.id, 'reunited')}
+                className="btn-emergency text-sm"
+              >Mark reunited</button>
+            )}
+          </div>
+        ))}
+      </section>
 
       {loading ? (
         <div className="card-white text-center py-16 text-slate-500">
@@ -136,14 +201,18 @@ export default function AuthorityDashboard() {
 
                   <div className="mt-2 text-xs text-slate-800 space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className="font-semibold text-brand-700">Missing: {m.missing_case?.person_name || 'Aarav Sharma'}</span>
+                      <span className="font-semibold text-brand-700">Missing: {m.missing_case?.person_name || 'Unknown'}</span>
                       <span className="text-slate-400">vs</span>
-                      <span className="font-semibold text-emerald-700">Found: {m.found_case?.person_name || 'Boy (Appu)'}</span>
+                      <span className="font-semibold text-emerald-700">Found: {m.found_case?.person_name || 'Unknown'}</span>
                     </div>
                   </div>
 
                   <div className="mt-2 text-[11px] text-slate-500 flex items-center justify-between">
-                    <span>Face Cosine Sim: {(m.face_similarity * 100).toFixed(1)}%</span>
+                    <span>
+                      Face cosine: {m.score_explanation?.face_signal_available !== false
+                        ? `${(m.face_similarity * 100).toFixed(1)}%`
+                        : 'unavailable'}
+                    </span>
                     <span className="font-bold text-slate-700">{m.status.replace('_', ' ')}</span>
                   </div>
                 </div>
@@ -176,19 +245,33 @@ export default function AuthorityDashboard() {
                     </div>
 
                     <div className="h-48 rounded-xl overflow-hidden bg-gray-200">
-                      <img
-                        src="https://images.unsplash.com/photo-1544717305-2782549b5136?w=400&auto=format&fit=crop&q=80"
-                        alt="Missing"
-                        className="w-full h-full object-cover"
-                      />
+                      {missingCase?.photos?.find((photo) => photo.is_primary)?.signed_url ? (
+                        <img
+                          src={missingCase.photos.find((photo) => photo.is_primary).signed_url}
+                          alt="Missing person report photo"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="h-full flex items-center justify-center text-xs text-slate-500">
+                          No report photo available
+                        </div>
+                      )}
                     </div>
+                    {missingCase?.photos?.find((photo) => photo.is_primary)?.processing_status &&
+                      <p className="text-[11px] text-slate-600">
+                        Photo AI: {missingCase.photos.find((photo) => photo.is_primary).processing_status.replaceAll('_', ' ')}
+                        {missingCase.photos.find((photo) => photo.is_primary).face_count > 1
+                          ? ` · ${missingCase.photos.find((photo) => photo.is_primary).face_count} faces detected`
+                          : ''}
+                      </p>}
 
                     <div className="space-y-1 text-xs text-slate-800">
-                      <div><strong>Name:</strong> {selectedMatch.missing_case?.person_name || 'Aarav Sharma'}</div>
-                      <div><strong>Age:</strong> 8 years</div>
-                      <div><strong>Clothing:</strong> Yellow cartoon t-shirt, blue denim shorts</div>
-                      <div><strong>Marks:</strong> Small birthmark behind left ear</div>
-                      <div><strong>Location:</strong> Old Bus Stand Evacuation Point</div>
+                      <div><strong>Name:</strong> {missingCase?.person.full_name || 'Unknown'}</div>
+                      <div><strong>Age:</strong> {missingCase?.person.approximate_age ?? 'Unknown'}</div>
+                      <div><strong>Clothing:</strong> {missingCase?.person.clothing_details || 'Not provided'}</div>
+                      <div><strong>Marks:</strong> {missingCase?.person.physical_marks || 'Not provided'}</div>
+                      <div><strong>Location:</strong> {missingCase?.person.last_seen_address || 'Not provided'}</div>
+                      <div><strong>Medical notes:</strong> {missingCase?.person.medical_notes || 'None provided'}</div>
                     </div>
                   </div>
 
@@ -200,19 +283,33 @@ export default function AuthorityDashboard() {
                     </div>
 
                     <div className="h-48 rounded-xl overflow-hidden bg-gray-200">
-                      <img
-                        src="https://images.unsplash.com/photo-1544717305-2782549b5136?w=400&auto=format&fit=crop&q=80"
-                        alt="Found"
-                        className="w-full h-full object-cover"
-                      />
+                      {foundCase?.photos?.find((photo) => photo.is_primary)?.signed_url ? (
+                        <img
+                          src={foundCase.photos.find((photo) => photo.is_primary).signed_url}
+                          alt="Found person report photo"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="h-full flex items-center justify-center text-xs text-slate-500">
+                          No report photo available
+                        </div>
+                      )}
                     </div>
+                    {foundCase?.photos?.find((photo) => photo.is_primary)?.processing_status &&
+                      <p className="text-[11px] text-slate-600">
+                        Photo AI: {foundCase.photos.find((photo) => photo.is_primary).processing_status.replaceAll('_', ' ')}
+                        {foundCase.photos.find((photo) => photo.is_primary).face_count > 1
+                          ? ` · ${foundCase.photos.find((photo) => photo.is_primary).face_count} faces detected`
+                          : ''}
+                      </p>}
 
                     <div className="space-y-1 text-xs text-slate-800">
-                      <div><strong>Name:</strong> {selectedMatch.found_case?.person_name || 'Unidentified Boy (says Appu)'}</div>
-                      <div><strong>Age:</strong> ~8 years</div>
-                      <div><strong>Clothing:</strong> Mud-stained yellow t-shirt, blue shorts</div>
-                      <div><strong>Marks:</strong> Small mark behind left ear</div>
-                      <div><strong>Shelter:</strong> Camp Delta 3 Relief Shelter (0.8km away)</div>
+                      <div><strong>Name:</strong> {foundCase?.person.full_name || 'Unidentified person'}</div>
+                      <div><strong>Age:</strong> {foundCase?.person.approximate_age ?? 'Unknown'}</div>
+                      <div><strong>Clothing:</strong> {foundCase?.person.clothing_details || 'Not provided'}</div>
+                      <div><strong>Marks:</strong> {foundCase?.person.physical_marks || 'Not provided'}</div>
+                      <div><strong>Location:</strong> {foundCase?.person.last_seen_address || 'Not provided'}</div>
+                      <div><strong>Medical notes:</strong> {foundCase?.person.medical_notes || 'None provided'}</div>
                     </div>
                   </div>
                 </div>
@@ -225,8 +322,26 @@ export default function AuthorityDashboard() {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                     <div className="bg-white p-2 rounded-lg border">
                       <div className="font-bold text-slate-500 text-[10px]">Face Cosine Sim</div>
-                      <div className="text-sm font-black text-brand-600">{(selectedMatch.face_similarity * 100).toFixed(0)}%</div>
+                      <div className="text-sm font-black text-brand-600">
+                        {selectedMatch.score_explanation?.face_signal_available !== false
+                          ? `${(selectedMatch.face_similarity * 100).toFixed(0)}%`
+                          : 'Unavailable'}
+                      </div>
                     </div>
+                    <p className="text-[11px] text-slate-600">
+                      AI scores are triage signals only. This candidate is not confirmed until an authorized officer verifies it.
+                    </p>
+                    {selectedMatch.score_explanation?.distance_km != null && (
+                      <p className="text-[11px] text-slate-600">
+                        Reported locations are approximately {selectedMatch.score_explanation.distance_km} km apart.
+                      </p>
+                    )}
+                    {(missingCase?.potential_duplicate_case_ids?.length > 0
+                      || foundCase?.potential_duplicate_case_ids?.length > 0) && (
+                      <p role="status" className="text-amber-900 bg-amber-50 rounded-lg p-2">
+                        Similar report(s) were detected. Check existing case records before deciding.
+                      </p>
+                    )}
                     <div className="bg-white p-2 rounded-lg border">
                       <div className="font-bold text-slate-500 text-[10px]">Age / Gender</div>
                       <div className="text-sm font-black text-emerald-600">{(selectedMatch.age_gender_score * 100).toFixed(0)}%</div>

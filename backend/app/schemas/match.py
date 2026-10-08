@@ -23,6 +23,8 @@ class MatchCandidateResponse(BaseModel):
     found_case_id: str
     missing_case: Optional[CaseSummaryResponse] = None
     found_case: Optional[CaseSummaryResponse] = None
+    missing_case_details: Optional[CaseDetailResponse] = None
+    found_case_details: Optional[CaseDetailResponse] = None
     face_similarity: float = Field(..., ge=0.0, le=1.0)
     age_gender_score: float = Field(..., ge=0.0, le=1.0)
     location_score: float = Field(..., ge=0.0, le=1.0)

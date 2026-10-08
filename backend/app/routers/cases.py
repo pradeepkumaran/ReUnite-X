@@ -5,6 +5,7 @@ Core endpoints for creating, retrieving, updating status, and uploading photos f
 from typing import List, Optional
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     HTTPException,
     UploadFile,
@@ -16,8 +17,8 @@ from fastapi import (
 )
 
 from app.core.limiter import limiter
-from app.core.security import get_current_user, get_optional_user, AuthUser
-from app.models.enums import CaseType, CaseStatus
+from app.core.security import get_optional_user, AuthUser, require_role
+from app.models.enums import CaseType, CaseStatus, UserRole
 from app.schemas.case import (
     CaseCreate,
     CaseDetailResponse,
@@ -26,8 +27,19 @@ from app.schemas.case import (
     PhotoResponse,
 )
 from app.services.case_service import CaseService
+from app.ai.pipeline import process_uploaded_photo, run_candidate_matching
 
 router = APIRouter(prefix="/cases", tags=["Cases"])
+
+
+def _matches_image_type(data: bytes, mime_type: str) -> bool:
+    if mime_type == "image/jpeg":
+        return data.startswith(b"\xff\xd8\xff")
+    if mime_type == "image/png":
+        return data.startswith(b"\x89PNG\r\n\x1a\n")
+    if mime_type == "image/webp":
+        return len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+    return False
 
 
 @router.post(
@@ -40,13 +52,16 @@ router = APIRouter(prefix="/cases", tags=["Cases"])
 async def create_case(
     request: Request,
     payload: CaseCreate,
+    background_tasks: BackgroundTasks,
     user: Optional[AuthUser] = Depends(get_optional_user),
 ):
     """
     Submits a missing person or found person report with full physical and demographic details.
     Available to the public, volunteers, and emergency authorities.
     """
-    return CaseService.create_case(payload, user)
+    created = CaseService.create_case(payload, user)
+    background_tasks.add_task(run_candidate_matching, created.id)
+    return created
 
 
 @router.get(
@@ -99,7 +114,7 @@ async def get_case(
 async def update_case_status(
     id: str,
     payload: CaseStatusUpdate,
-    user: AuthUser = Depends(get_current_user),
+    user: AuthUser = Depends(require_role(UserRole.AUTHORITY, UserRole.ADMIN)),
 ):
     """
     Updates the operational lifecycle status of a case.
@@ -123,6 +138,7 @@ async def update_case_status(
 async def upload_case_photo(
     request: Request,
     id: str,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="JPEG/PNG image file"),
     is_primary: bool = Form(True, description="Mark as primary display photo for case"),
     user: Optional[AuthUser] = Depends(get_optional_user),
@@ -144,11 +160,21 @@ async def upload_case_photo(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail="File size exceeds maximum allowed limit of 10MB.",
         )
+    if not _matches_image_type(file_bytes, file.content_type):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The uploaded file content does not match its declared image type.",
+        )
 
-    return CaseService.add_photo(
+    photo = CaseService.add_photo(
         case_id=id,
         file_name=file.filename or "uploaded_photo.jpg",
         mime_type=file.content_type,
         file_size=len(file_bytes),
         is_primary=is_primary,
+        photo_bytes=file_bytes,
+        can_view_private=bool(user and user.role.value in ("authority", "admin", "volunteer")),
+        actor_id=user.id if user else None,
     )
+    background_tasks.add_task(process_uploaded_photo, photo.id, id, file_bytes)
+    return photo

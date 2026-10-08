@@ -2,7 +2,7 @@
 REUNITE-X Offline Batch Synchronization Schemas
 Supports idempotent offline intake, Dexie.js sync queues, and conflict logs.
 """
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from datetime import datetime
 from pydantic import BaseModel, Field
 from app.models.enums import CaseType
@@ -10,10 +10,10 @@ from app.schemas.person import PersonCreate
 
 
 class OfflinePhotoPayload(BaseModel):
-    client_photo_id: str
-    file_name: str
-    mime_type: str = "image/jpeg"
-    base64_data: Optional[str] = None
+    client_photo_id: str = Field(..., min_length=1, max_length=100)
+    file_name: str = Field(..., min_length=1, max_length=255)
+    mime_type: Literal["image/jpeg", "image/png", "image/webp"] = "image/jpeg"
+    base64_data: Optional[str] = Field(None, max_length=14_000_000)
     is_primary: bool = True
 
 

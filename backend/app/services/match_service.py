@@ -18,13 +18,16 @@ from app.schemas.match import (
     VerificationResponse,
 )
 from app.services.case_service import CaseService
+from app.services.notification_service import NotificationService
+from app.schemas.notification import NotificationSendRequest
 
 
 class MatchService:
     @staticmethod
     def get_matches(
         status_filter: Optional[MatchStatus] = None,
-        limit: int = 50
+        limit: int = 50,
+        authority: Optional[AuthUser] = None,
     ) -> List[MatchCandidateResponse]:
         results: List[MatchCandidateResponse] = []
 
@@ -32,25 +35,11 @@ class MatchService:
             if status_filter and m["status"] != status_filter.value:
                 continue
 
-            # Hydrate case summaries
-            missing_cases = CaseService.get_cases(limit=1, offset=0)
-            missing_case = next((c for c in missing_cases if c.id == m["missing_case_id"]), None)
-            found_case = next((c for c in missing_cases if c.id == m["found_case_id"]), None)
-
-            # If not in top list, query directly
-            if not missing_case:
-                try:
-                    c_det = CaseService.get_case_by_id(m["missing_case_id"])
-                    missing_case = next((c for c in CaseService.get_cases(limit=100) if c.id == m["missing_case_id"]), None)
-                except Exception:
-                    pass
-
-            if not found_case:
-                try:
-                    c_det = CaseService.get_case_by_id(m["found_case_id"])
-                    found_case = next((c for c in CaseService.get_cases(limit=100) if c.id == m["found_case_id"]), None)
-                except Exception:
-                    pass
+            all_cases = CaseService.get_cases(limit=1000, user=authority)
+            missing_case_details = CaseService.get_case_by_id(m["missing_case_id"], authority)
+            found_case_details = CaseService.get_case_by_id(m["found_case_id"], authority)
+            missing_case = next((item for item in all_cases if item.id == m["missing_case_id"]), None)
+            found_case = next((item for item in all_cases if item.id == m["found_case_id"]), None)
 
             results.append(
                 MatchCandidateResponse(
@@ -59,6 +48,8 @@ class MatchService:
                     found_case_id=m["found_case_id"],
                     missing_case=missing_case,
                     found_case=found_case,
+                    missing_case_details=missing_case_details,
+                    found_case_details=found_case_details,
                     face_similarity=m["face_similarity"],
                     age_gender_score=m["age_gender_score"],
                     location_score=m["location_score"],
@@ -90,10 +81,10 @@ class MatchService:
                 detail=f"Match candidate '{match_id}' not found."
             )
 
-        if m["status"] == MatchStatus.VERIFIED.value:
+        if m["status"] != MatchStatus.PENDING_REVIEW.value:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="This candidate match has already been verified."
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Candidate is no longer awaiting review (status: {m['status']})."
             )
 
         now_iso = datetime.now(timezone.utc).isoformat()
@@ -117,7 +108,7 @@ class MatchService:
             found_case["updated_at"] = now_iso
 
         # Update confirmed location if authority supplied one
-        if request.verified_location_lat and request.verified_location_lng:
+        if request.verified_location_lat is not None and request.verified_location_lng is not None:
             for p in db.persons.values():
                 if p["case_id"] in (m["missing_case_id"], m["found_case_id"]):
                     p["last_seen_lat"] = request.verified_location_lat
@@ -137,7 +128,7 @@ class MatchService:
             "verified_location_lat": request.verified_location_lat,
             "verified_location_lng": request.verified_location_lng,
             "verified_location_name": request.verified_location_name,
-            "family_notified": request.notify_family,
+            "family_notified": False,
             "verified_at": now_iso
         }
         db.verifications[verification_id] = verification_record
@@ -159,22 +150,39 @@ class MatchService:
         })
 
         # Family notification trigger
-        if request.notify_family:
-            notif_id = str(uuid.uuid4())
-            db.notifications[notif_id] = {
-                "id": notif_id,
-                "case_id": m["missing_case_id"],
-                "match_id": match_id,
-                "recipient_id": missing_case.get("reporter_id") if missing_case else None,
-                "channel": NotificationChannel.EMAIL.value,
-                "recipient_target": "family@example.com",
-                "title": f"Official Match Verified: {missing_case.get('case_number') if missing_case else 'Case'}",
-                "message": f"Emergency authorities have officially verified a match. Notes: {request.notes}",
-                "status": "sent",
-                "sent_at": now_iso,
-                "created_at": now_iso
-            }
-            logger.info(f"Queued family notification for verified match {match_id}")
+        family_notified = False
+        missing_person = next(
+            (person for person in db.persons.values()
+             if person["case_id"] == m["missing_case_id"]),
+            None,
+        )
+        target_email = missing_person.get("contact_email") if missing_person else None
+        if request.notify_family and target_email:
+            notification = NotificationService.send(NotificationSendRequest(
+                case_id=m["missing_case_id"],
+                match_id=match_id,
+                recipient_target=target_email,
+                channel=NotificationChannel.EMAIL,
+                title=f"Official update for case {missing_case.get('case_number', '')}",
+                message=(
+                    "An authorized disaster-response officer has verified a potential match. "
+                    "Please contact your designated relief authority to coordinate next steps."
+                ),
+                payload={"case_id": m["missing_case_id"], "event": "verification_complete"},
+            ), actor_id=authority.id)
+            family_notified = notification.status.value == "sent"
+            verification_record["family_notified"] = family_notified
+            if family_notified:
+                for matched_case_id in (m["missing_case_id"], m["found_case_id"]):
+                    case_record = db.cases.get(matched_case_id)
+                    if case_record:
+                        case_record["status"] = CaseStatus.NOTIFIED.value
+                        case_record["updated_at"] = now_iso
+        elif request.notify_family:
+            logger.warning(
+                "Verified match %s has no family email on record; no notification was sent.",
+                match_id,
+            )
 
         logger.info(f"Authority {authority.id} verified match {match_id}")
         return VerificationResponse(
@@ -188,7 +196,7 @@ class MatchService:
             verified_location_lat=request.verified_location_lat,
             verified_location_lng=request.verified_location_lng,
             verified_location_name=request.verified_location_name,
-            family_notified=request.notify_family,
+            family_notified=family_notified,
             verified_at=datetime.fromisoformat(now_iso.replace("Z", "+00:00"))
         )
 
@@ -204,11 +212,28 @@ class MatchService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Match candidate '{match_id}' not found."
             )
+        if m["status"] != MatchStatus.PENDING_REVIEW.value:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Candidate is no longer awaiting review (status: {m['status']})."
+            )
 
         now_iso = datetime.now(timezone.utc).isoformat()
         m["status"] = MatchStatus.REJECTED.value
         m["reviewed_by"] = authority.id
         m["reviewed_at"] = now_iso
+        verification_id = str(uuid.uuid4())
+        db.verifications[verification_id] = {
+            "id": verification_id,
+            "match_id": match_id,
+            "missing_case_id": m["missing_case_id"],
+            "found_case_id": m["found_case_id"],
+            "authority_id": authority.id,
+            "decision": VerificationDecision.REJECTED.value,
+            "notes": request.reason,
+            "family_notified": False,
+            "verified_at": now_iso,
+        }
 
         # Revert case statuses back to searching
         missing_case = db.cases.get(m["missing_case_id"])

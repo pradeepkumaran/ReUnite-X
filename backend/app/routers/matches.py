@@ -27,7 +27,10 @@ authority_guard = require_role(UserRole.AUTHORITY, UserRole.ADMIN)
     summary="List Candidate Matches (Authority Only)"
 )
 async def list_matches(
-    status: Optional[MatchStatus] = Query(None, description="Filter by candidate match status"),
+    status: Optional[MatchStatus] = Query(
+        MatchStatus.PENDING_REVIEW,
+        description="Filter by candidate match status",
+    ),
     limit: int = Query(50, ge=1, le=100),
     authority: AuthUser = Depends(authority_guard),
 ):
@@ -35,7 +38,7 @@ async def list_matches(
     Returns candidate matches ranked by priority score and multimodal match confidence.
     Strictly protected: unverified candidate matches are never exposed to the public.
     """
-    return MatchService.get_matches(status_filter=status, limit=limit)
+    return MatchService.get_matches(status_filter=status, limit=limit, authority=authority)
 
 
 @router.post(

@@ -61,7 +61,8 @@ def test_get_case_detail():
     assert response.status_code == 200
     data = response.json()
     assert data["id"] == case_id
-    assert data["person"]["full_name"] == "Aarav Sharma"
+    assert data["person"]["full_name"] == "Protected person"
+    assert data["person"]["last_seen_lat"] is None
     assert data["is_minor"] is True
     # For unauthenticated or public caller, minor phone must be shielded
     assert data["person"]["contact_phone"] == "[REDACTED - MINOR PROTECTION]"
@@ -102,7 +103,7 @@ def test_search_cases():
     results = response.json()
     assert len(results) >= 1
     found = results[0]
-    assert "Aarav" in found["person"]["full_name"]
+    assert found["person"]["full_name"] == "Protected person"
     assert found["person"]["is_minor"] is True
     assert found["person"]["masked_contact_phone"] == "[REDACTED - MINOR PROTECTION]"
 
@@ -134,6 +135,23 @@ def test_matches_authorization_guard():
     assert matches[0]["status"] == "pending_review"
 
 
+def test_invalid_optional_jwt_is_rejected_instead_of_downgraded_to_anonymous():
+    response = client.get(
+        "/api/v1/cases",
+        headers={"Authorization": "Bearer invalid-token"},
+    )
+    assert response.status_code == 401
+
+
+def test_case_status_cannot_skip_human_verification():
+    response = client.patch(
+        "/api/v1/cases/c0000000-0000-0000-0000-000000000001/status",
+        json={"status": "verified", "notes": "Attempted direct transition"},
+        headers={"Authorization": "Bearer mock-authority"},
+    )
+    assert response.status_code == 409
+
+
 def test_verify_match():
     """Verify authority can confirm a candidate match."""
     match_id = "m0000000-0000-0000-0000-000000000001"
@@ -152,7 +170,9 @@ def test_verify_match():
     assert response.status_code == 200
     data = response.json()
     assert data["decision"] == "verified"
-    assert data["family_notified"] is True
+    # No provider is configured in the test environment: verification succeeds,
+    # but the notification is truthfully recorded as pending rather than sent.
+    assert data["family_notified"] is False
 
     # Check case status updated to verified
     case_resp = client.get("/api/v1/cases/c0000000-0000-0000-0000-000000000001")
@@ -212,6 +232,14 @@ def test_upload_photo():
     assert photo["is_primary"] is True
 
 
+def test_upload_photo_rejects_mismatched_file_content():
+    response = client.post(
+        "/api/v1/cases/c0000000-0000-0000-0000-000000000001/photos",
+        files={"file": ("fake.jpg", b"not an image", "image/jpeg")},
+    )
+    assert response.status_code == 400
+
+
 def test_send_notification():
     """Verify emergency alert dispatch endpoint."""
     payload = {
@@ -228,6 +256,5 @@ def test_send_notification():
     )
     assert response.status_code == 201
     notif = response.json()
-    assert notif["status"] == "sent"
+    assert notif["status"] == "pending"
     assert notif["recipient_target"] == "family@example.com"
-

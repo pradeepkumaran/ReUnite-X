@@ -131,10 +131,7 @@ async def get_optional_user(
     """Allows anonymous public actions while capturing user ID if token is supplied."""
     if not credentials or not credentials.credentials:
         return None
-    try:
-        return await get_current_user(credentials)
-    except HTTPException:
-        return None
+    return await get_current_user(credentials)
 
 
 def require_role(*allowed_roles: UserRole):

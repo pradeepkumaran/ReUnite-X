@@ -10,7 +10,10 @@ from app.models.enums import NotificationChannel, NotificationStatus
 class NotificationSendRequest(BaseModel):
     case_id: Optional[str] = None
     match_id: Optional[str] = None
-    recipient_target: str = Field(..., description="FCM device token or recipient email address")
+    recipient_target: str = Field(
+        ..., min_length=3, max_length=500,
+        description="FCM device token or recipient email address",
+    )
     channel: NotificationChannel = Field(default=NotificationChannel.EMAIL)
     title: str = Field(..., min_length=2, max_length=150)
     message: str = Field(..., min_length=5, max_length=1500)
@@ -26,5 +29,6 @@ class NotificationResponse(BaseModel):
     title: str
     message: str
     status: NotificationStatus
+    delivery_error: Optional[str] = None
     sent_at: Optional[datetime] = None
     created_at: datetime

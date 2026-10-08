@@ -19,7 +19,7 @@ import { useNetwork } from '../../context/NetworkContext';
 
 export default function Navbar() {
   const { user, loginWithRole, logout } = useAuth();
-  const { isOnline, pendingCount } = useNetwork();
+  const { isOnline, pendingCount, openQueueDrawer } = useNetwork();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
 
@@ -47,15 +47,21 @@ export default function Navbar() {
                 <Wifi className="w-3.5 h-3.5" /> Online
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 bg-white text-brand-700 px-2 py-0.5 rounded-full font-bold text-xs animate-pulse">
+              <button
+                onClick={openQueueDrawer}
+                className="inline-flex items-center gap-1 bg-white text-brand-700 px-2 py-0.5 rounded-full font-bold text-xs animate-pulse hover:bg-red-50"
+              >
                 <WifiOff className="w-3.5 h-3.5" /> OFFLINE MODE
-              </span>
+              </button>
             )}
           </div>
           {pendingCount > 0 && (
-            <span className="bg-yellow-400 text-slate-900 px-2 py-0.5 rounded-full font-bold text-xs">
+            <button
+              onClick={openQueueDrawer}
+              className="bg-yellow-400 hover:bg-yellow-300 text-slate-900 px-2.5 py-0.5 rounded-full font-black text-xs transition shadow-sm cursor-pointer"
+            >
               {pendingCount} Pending Sync
-            </span>
+            </button>
           )}
         </div>
       </div>

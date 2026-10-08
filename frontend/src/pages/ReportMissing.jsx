@@ -16,6 +16,7 @@ import PhotoCapture from '../components/common/PhotoCapture';
 import LocationPicker from '../components/common/LocationPicker';
 import ConsentModal from '../components/common/ConsentModal';
 import { useNetwork } from '../context/NetworkContext';
+import { saveReportOffline } from '../db/indexedDB';
 
 export default function ReportMissing() {
   const [currentStep, setCurrentStep] = useState(1);
@@ -108,23 +109,35 @@ export default function ReportMissing() {
       }
     };
 
-    if (!isOnline) {
-      // Offline fallback: Save in localStorage / Dexie queue
-      const offlineQueue = JSON.parse(localStorage.getItem('reunite_offline_cases') || '[]');
-      offlineQueue.push({
-        ...payload,
-        client_timestamp: new Date().toISOString(),
-        photo_preview: formData.photo_preview
+    const queueLocally = async (serverCase = null) => {
+      await saveReportOffline({
+        clientCaseUuid: clientUuid,
+        type: payload.type,
+        disasterId: payload.disaster_id,
+        consentGiven: payload.consent_given,
+        person: payload.person,
+        photoBlob: formData.photo_file,
+        photoDataUrl: formData.photo_preview,
+        fileName: formData.photo_file?.name || 'missing-person.jpg',
+        mimeType: formData.photo_file?.type || 'image/jpeg',
       });
-      localStorage.setItem('reunite_offline_cases', JSON.stringify(offlineQueue));
       setPendingCount(prev => prev + 1);
-
       setIsSubmitting(false);
       setSubmissionSuccess({
-        case_number: `OFFLINE-${clientUuid.slice(0, 8)}`,
-        mode: 'offline',
+        case_number: serverCase?.case_number || `OFFLINE-${clientUuid.slice(0, 8)}`,
+        case_id: serverCase?.id,
+        mode: serverCase ? 'photo_pending' : 'offline',
         full_name: formData.full_name
       });
+    };
+
+    if (!isOnline) {
+      try {
+        await queueLocally();
+      } catch (err) {
+        setIsSubmitting(false);
+        alert(`Could not save this report on this device: ${err.message}`);
+      }
       return;
     }
 
@@ -142,7 +155,11 @@ export default function ReportMissing() {
             headers: { 'Content-Type': 'multipart/form-data' }
           });
         } catch (photoErr) {
-          console.warn("Photo upload issue:", photoErr);
+          if (!photoErr.response) {
+            await queueLocally(createdCase);
+            return;
+          }
+          throw photoErr;
         }
       }
 
@@ -154,6 +171,14 @@ export default function ReportMissing() {
         full_name: formData.full_name
       });
     } catch (err) {
+      if (!err.response) {
+        try {
+          await queueLocally();
+          return;
+        } catch (storageError) {
+          alert(`Network failed and this report could not be saved locally: ${storageError.message}`);
+        }
+      }
       setIsSubmitting(false);
       console.error("Submission failed:", err);
       alert("Error submitting report. Please verify connection and details.");
@@ -178,9 +203,11 @@ export default function ReportMissing() {
           <div className="text-2xl font-black text-brand-700 tracking-wider font-mono">
             {submissionSuccess.case_number}
           </div>
-          {submissionSuccess.mode === 'offline' && (
+          {submissionSuccess.mode !== 'online' && (
             <p className="text-xs font-semibold text-amber-700 pt-2">
-              ⚠️ Stored locally on this device. Will automatically sync to central database when back online.
+              {submissionSuccess.mode === 'photo_pending'
+                ? 'Report is online; its photo is saved locally and will sync when connectivity returns.'
+                : 'Stored locally on this device. Will automatically sync to central database when back online.'}
             </p>
           )}
         </div>

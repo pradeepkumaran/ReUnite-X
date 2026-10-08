@@ -3,7 +3,7 @@ import { WifiOff, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useNetwork } from '../../context/NetworkContext';
 
 export default function StatusBanner() {
-  const { isOnline, pendingCount, isSyncing, syncStatusMessage, triggerSync } = useNetwork();
+  const { isOnline, pendingCount, isSyncing, syncStatusMessage, triggerSync, openQueueDrawer } = useNetwork();
 
   if (isOnline && pendingCount === 0 && !syncStatusMessage) {
     return null;
@@ -31,14 +31,22 @@ export default function StatusBanner() {
                 <strong>{pendingCount} offline reports</strong> waiting to be uploaded to the central database.
               </span>
             </div>
-            <button
-              onClick={triggerSync}
-              disabled={isSyncing}
-              className="inline-flex items-center gap-1.5 bg-slate-900 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-slate-800 transition disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-              {isSyncing ? 'Syncing...' : 'Sync Now'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={openQueueDrawer}
+                className="bg-white/90 hover:bg-white text-slate-900 px-2.5 py-1 rounded-lg text-xs font-bold transition shadow-sm"
+              >
+                View Queue
+              </button>
+              <button
+                onClick={triggerSync}
+                disabled={isSyncing}
+                className="inline-flex items-center gap-1.5 bg-slate-900 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-slate-800 transition disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                {isSyncing ? 'Syncing...' : 'Sync Now'}
+              </button>
+            </div>
           </div>
         </div>
       )}
