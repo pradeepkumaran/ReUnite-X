@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   HeartHandshake, 
   Search, 
@@ -12,21 +12,57 @@ import {
   Menu, 
   X,
   FileSearch,
-  Radio
+  Radio,
+  Ambulance,
+  Building2,
+  Tent,
+  Layers,
+  ChevronDown,
+  UserCheck,
+  Users,
+  Clock,
+  Database
 } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth, ROLE_PROFILES } from '../../context/AuthContext';
 import { useNetwork } from '../../context/NetworkContext';
+import apiClient from '../../api/client';
+import DatabaseStatusModal from '../common/DatabaseStatusModal';
 
 export default function Navbar() {
-  const { user, loginWithRole, logout } = useAuth();
-  const { isOnline, pendingCount, openQueueDrawer } = useNetwork();
+  const { user, loginWithRole, isAuthority, isRescueTeam, isHospital, isShelter, isFamily } = useAuth();
+  const { isOnline, toggleSimulateOffline, pendingCount, openQueueDrawer } = useNetwork();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
+  const [dbModalOpen, setDbModalOpen] = useState(false);
+  const [dbStatus, setDbStatus] = useState(null);
   const location = useLocation();
+  const navigate = useNavigate();
 
-  const isAuthority = user?.role === 'authority' || user?.role === 'admin';
-  const isVolunteer = user?.role === 'volunteer';
+  const fetchDbStatus = async () => {
+    try {
+      const res = await apiClient.get('/database/status');
+      setDbStatus(res.data);
+    } catch {
+      // Offline or backend temporarily down
+    }
+  };
+
+  useEffect(() => {
+    fetchDbStatus();
+    const interval = setInterval(fetchDbStatus, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
 
   const isActive = (path) => location.pathname === path;
+
+  const handleRoleSelect = (roleKey, targetPath) => {
+    loginWithRole(roleKey);
+    if (targetPath) {
+      navigate(targetPath);
+    }
+    setMobileMenuOpen(false);
+  };
 
   return (
     <header className="sticky top-0 z-50 bg-white border-b-2 border-brand-600 shadow-sm">
@@ -38,22 +74,45 @@ export default function Navbar() {
             <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
           </span>
           <span className="tracking-wide uppercase font-bold text-xs">CRISIS ACTIVE:</span>
-          <span>Cyclone Vardha Impact Relief Corridor</span>
+          <span className="hidden sm:inline">Cyclone Vardha Impact Relief Corridor (Nagapattinam)</span>
+          <span className="sm:hidden">Cyclone Relief</span>
         </div>
         <div className="flex items-center gap-3">
+          {/* Database & Supabase Status Pill */}
+          <button
+            onClick={() => setDbModalOpen(true)}
+            title="Database Status: Click to inspect Supabase cloud connectivity & local storage"
+            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold text-[11px] transition cursor-pointer ${
+              dbStatus?.supabase_connected
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-400'
+                : 'bg-red-800 hover:bg-red-900 text-white/90 border border-red-500/60'
+            }`}
+          >
+            <Database className="w-3.5 h-3.5 text-white" />
+            <span className="hidden sm:inline">
+              {dbStatus?.supabase_connected ? 'Supabase Connected' : 'DB: Local SQLite'}
+            </span>
+            <span className="sm:hidden">
+              {dbStatus?.supabase_connected ? 'Supabase' : 'SQLite'}
+            </span>
+          </button>
+
           <div className="flex items-center gap-1.5">
-            {isOnline ? (
-              <span className="inline-flex items-center gap-1 text-red-100 text-xs">
-                <Wifi className="w-3.5 h-3.5" /> Online
-              </span>
-            ) : (
-              <button
-                onClick={openQueueDrawer}
-                className="inline-flex items-center gap-1 bg-white text-brand-700 px-2 py-0.5 rounded-full font-bold text-xs animate-pulse hover:bg-red-50"
-              >
-                <WifiOff className="w-3.5 h-3.5" /> OFFLINE MODE
-              </button>
-            )}
+            <button
+              onClick={toggleSimulateOffline}
+              title="Click to toggle between Online Mode and Offline Storage simulation"
+              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[11px] transition cursor-pointer ${
+                isOnline 
+                  ? 'bg-red-700 hover:bg-red-800 text-white border border-red-500' 
+                  : 'bg-yellow-400 text-slate-900 animate-pulse'
+              }`}
+            >
+              {isOnline ? (
+                <><Wifi className="w-3.5 h-3.5" /> Online Mode</>
+              ) : (
+                <><WifiOff className="w-3.5 h-3.5" /> OFFLINE MODE (Dexie.js)</>
+              )}
+            </button>
           </div>
           {pendingCount > 0 && (
             <button
@@ -70,7 +129,7 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo & Brand */}
-          <Link to="/" className="flex items-center gap-2.5 group">
+          <Link to="/" className="flex items-center gap-2.5 group flex-shrink-0">
             <div className="w-10 h-10 rounded-xl bg-brand-600 text-white flex items-center justify-center shadow-emergency group-hover:bg-brand-700 transition">
               <HeartHandshake className="w-6 h-6 stroke-[2.5]" />
             </div>
@@ -84,101 +143,90 @@ export default function Navbar() {
             </div>
           </Link>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-1">
-            <Link
-              to="/search"
-              className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
-                isActive('/search') 
-                  ? 'bg-brand-50 text-brand-700 font-bold' 
-                  : 'text-slate-700 hover:text-brand-600 hover:bg-gray-50'
-              }`}
-            >
-              Search Directory
-            </Link>
-            <Link
-              to="/report-missing"
-              className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
-                isActive('/report-missing') 
-                  ? 'bg-brand-50 text-brand-700 font-bold' 
-                  : 'text-slate-700 hover:text-brand-600 hover:bg-gray-50'
-              }`}
-            >
-              Report Missing
-            </Link>
-            <Link
-              to="/report-found"
-              className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
-                isActive('/report-found') 
-                  ? 'bg-brand-50 text-brand-700 font-bold' 
-                  : 'text-slate-700 hover:text-brand-600 hover:bg-gray-50'
-              }`}
-            >
-              Report Found
-            </Link>
-            <Link
-              to="/tracker"
-              className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
-                isActive('/tracker') 
-                  ? 'bg-brand-50 text-brand-700 font-bold' 
-                  : 'text-slate-700 hover:text-brand-600 hover:bg-gray-50'
-              }`}
-            >
-              Case Tracker
-            </Link>
-            <Link
-              to="/map"
-              className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
-                isActive('/map') 
-                  ? 'bg-brand-50 text-brand-700 font-bold' 
-                  : 'text-slate-700 hover:text-brand-600 hover:bg-gray-50'
-              }`}
-            >
-              Live Map
-            </Link>
-
-            {/* Authority Review Queue link if authority */}
-            {isAuthority && (
+          {/* Integrated Desktop Navigation & Role Switcher Toolbar */}
+          <div className="hidden md:flex items-center gap-3">
+            {/* Search Directory & Case Tracker Segment */}
+            <nav className="flex items-center gap-1 bg-slate-100/80 border border-slate-200/90 rounded-2xl p-1 shadow-sm">
               <Link
-                to="/authority"
-                className={`px-3 py-2 rounded-lg text-sm font-bold transition flex items-center gap-1.5 ${
-                  isActive('/authority') 
-                    ? 'bg-brand-600 text-white shadow-sm' 
-                    : 'text-brand-700 bg-red-100 hover:bg-red-200'
+                to="/search"
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  isActive('/search') 
+                    ? 'bg-white text-brand-700 font-black shadow-sm' 
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                 }`}
               >
-                <ShieldCheck className="w-4 h-4" />
-                Authority Queue
+                <Search className="w-3.5 h-3.5 text-brand-600" />
+                Search Directory
               </Link>
-            )}
-          </nav>
+              <Link
+                to="/tracker"
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  isActive('/tracker') 
+                    ? 'bg-white text-brand-700 font-black shadow-sm' 
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5 text-slate-500" />
+                Case Tracker
+              </Link>
+            </nav>
 
-          {/* Role Switcher & Auth Pill */}
-          <div className="hidden lg:flex items-center gap-3">
-            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl text-xs font-semibold">
-              <span className="text-gray-500 px-2">Role:</span>
+            {/* Subtle Divider */}
+            <div className="h-5 w-px bg-slate-200 hidden lg:block" />
+
+            {/* Role Switcher (Interactive Role Column) */}
+            <div className="flex items-center gap-1 bg-slate-100/80 border border-slate-200/90 rounded-2xl p-1 shadow-sm">
+              <span className="text-[10px] text-slate-400 uppercase px-2 font-black tracking-wider select-none">
+                ROLE:
+              </span>
               <button
-                onClick={() => loginWithRole('public', 'Citizen User')}
-                className={`px-2.5 py-1 rounded-lg transition ${
-                  user?.role === 'public' ? 'bg-white text-slate-900 shadow-sm font-bold' : 'text-gray-600 hover:text-black'
+                onClick={() => handleRoleSelect('family', '/report-missing')}
+                title="Switch to Family Persona & Report Missing"
+                className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer text-xs flex items-center gap-1.5 ${
+                  isFamily ? 'bg-slate-900 text-white shadow-sm font-black' : 'text-slate-600 hover:text-black hover:bg-white/60'
                 }`}
               >
-                Public
+                <Users className="w-3.5 h-3.5" />
+                Family
               </button>
               <button
-                onClick={() => loginWithRole('volunteer', 'Rohan (Volunteer)')}
-                className={`px-2.5 py-1 rounded-lg transition ${
-                  user?.role === 'volunteer' ? 'bg-emerald-600 text-white shadow-sm font-bold' : 'text-gray-600 hover:text-black'
+                onClick={() => handleRoleSelect('rescue_team', '/rescue-team')}
+                title="Switch to Rescue Team & Open Field Desk"
+                className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer text-xs flex items-center gap-1.5 ${
+                  isRescueTeam ? 'bg-amber-600 text-white shadow-sm font-black' : 'text-slate-600 hover:text-amber-800 hover:bg-amber-50/60'
                 }`}
               >
-                Volunteer
+                <Ambulance className="w-3.5 h-3.5" />
+                Rescue
               </button>
               <button
-                onClick={() => loginWithRole('authority', 'Capt. Vikram (NDRF)')}
-                className={`px-2.5 py-1 rounded-lg transition ${
-                  user?.role === 'authority' ? 'bg-brand-600 text-white shadow-sm font-bold' : 'text-gray-600 hover:text-black'
+                onClick={() => handleRoleSelect('hospital', '/hospital')}
+                title="Switch to Hospital & Open Patient Admissions"
+                className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer text-xs flex items-center gap-1.5 ${
+                  isHospital ? 'bg-blue-600 text-white shadow-sm font-black' : 'text-slate-600 hover:text-blue-800 hover:bg-blue-50/60'
                 }`}
               >
+                <Building2 className="w-3.5 h-3.5" />
+                Hospital
+              </button>
+              <button
+                onClick={() => handleRoleSelect('shelter', '/shelter')}
+                title="Switch to Shelter & Open Resident Desk"
+                className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer text-xs flex items-center gap-1.5 ${
+                  isShelter ? 'bg-emerald-600 text-white shadow-sm font-black' : 'text-slate-600 hover:text-emerald-800 hover:bg-emerald-50/60'
+                }`}
+              >
+                <Tent className="w-3.5 h-3.5" />
+                Shelter
+              </button>
+              <button
+                onClick={() => handleRoleSelect('authority', '/authority')}
+                title="Switch to Authority & Open Verification HQ"
+                className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer text-xs flex items-center gap-1.5 ${
+                  isAuthority ? 'bg-brand-600 text-white shadow-sm font-black' : 'text-slate-600 hover:text-brand-800 hover:bg-red-50/60'
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
                 Authority
               </button>
             </div>
@@ -198,79 +246,93 @@ export default function Navbar() {
 
       {/* Mobile Drawer */}
       {mobileMenuOpen && (
-        <div className="md:hidden bg-white border-t border-gray-200 px-4 pt-3 pb-6 space-y-2">
-          <Link
-            to="/report-missing"
-            onClick={() => setMobileMenuOpen(false)}
-            className="block px-3 py-2.5 rounded-lg text-base font-bold bg-brand-600 text-white text-center"
-          >
-            Report Missing Person
-          </Link>
-          <Link
-            to="/report-found"
-            onClick={() => setMobileMenuOpen(false)}
-            className="block px-3 py-2.5 rounded-lg text-base font-bold border-2 border-brand-600 text-brand-600 text-center"
-          >
-            Report Found Person
-          </Link>
-          <div className="border-t border-gray-100 my-2 pt-2 space-y-1">
-            <Link
-              to="/search"
-              onClick={() => setMobileMenuOpen(false)}
-              className="block px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 hover:bg-gray-50"
-            >
-              Search Directory
-            </Link>
-            <Link
-              to="/tracker"
-              onClick={() => setMobileMenuOpen(false)}
-              className="block px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 hover:bg-gray-50"
-            >
-              Case Tracker
-            </Link>
-            <Link
-              to="/map"
-              onClick={() => setMobileMenuOpen(false)}
-              className="block px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 hover:bg-gray-50"
-            >
-              Live Map
-            </Link>
-            {isAuthority && (
-              <Link
-                to="/authority"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block px-3 py-2 rounded-lg text-sm font-bold text-brand-700 bg-red-50"
-              >
-                Authority Review Queue
-              </Link>
-            )}
-          </div>
-          {/* Mobile Role Switcher */}
-          <div className="pt-2 border-t border-gray-200">
-            <p className="text-xs text-gray-500 font-semibold mb-1">Switch Persona:</p>
-            <div className="grid grid-cols-3 gap-1">
+        <div className="xl:hidden bg-white border-t border-gray-200 px-4 pt-3 pb-6 space-y-3">
+          {/* Role selector on mobile */}
+          <div className="bg-gray-50 p-2.5 rounded-2xl border border-gray-200 space-y-1.5">
+            <span className="text-[10px] uppercase font-black text-slate-500 block px-1">Active Role Persona:</span>
+            <div className="grid grid-cols-3 gap-1 text-xs font-bold">
               <button
-                onClick={() => { loginWithRole('public'); setMobileMenuOpen(false); }}
-                className={`py-1.5 rounded text-xs font-bold ${user?.role === 'public' ? 'bg-slate-900 text-white' : 'bg-gray-100'}`}
+                onClick={() => handleRoleSelect('family', '/report-missing')}
+                className={`py-1.5 px-2 rounded-xl text-center ${isFamily ? 'bg-slate-900 text-white font-black' : 'bg-white border text-slate-700'}`}
               >
-                Public
+                Family
               </button>
               <button
-                onClick={() => { loginWithRole('volunteer'); setMobileMenuOpen(false); }}
-                className={`py-1.5 rounded text-xs font-bold ${user?.role === 'volunteer' ? 'bg-emerald-600 text-white' : 'bg-gray-100'}`}
+                onClick={() => handleRoleSelect('rescue_team', '/rescue-team')}
+                className={`py-1.5 px-2 rounded-xl text-center ${isRescueTeam ? 'bg-amber-600 text-white font-black' : 'bg-white border text-slate-700'}`}
               >
-                Volunteer
+                Rescue
               </button>
               <button
-                onClick={() => { loginWithRole('authority'); setMobileMenuOpen(false); }}
-                className={`py-1.5 rounded text-xs font-bold ${user?.role === 'authority' ? 'bg-brand-600 text-white' : 'bg-gray-100'}`}
+                onClick={() => handleRoleSelect('hospital', '/hospital')}
+                className={`py-1.5 px-2 rounded-xl text-center ${isHospital ? 'bg-blue-600 text-white font-black' : 'bg-white border text-slate-700'}`}
+              >
+                Hospital
+              </button>
+              <button
+                onClick={() => handleRoleSelect('shelter', '/shelter')}
+                className={`py-1.5 px-2 rounded-xl text-center ${isShelter ? 'bg-emerald-600 text-white font-black' : 'bg-white border text-slate-700'}`}
+              >
+                Shelter
+              </button>
+              <button
+                onClick={() => handleRoleSelect('authority', '/authority')}
+                className={`py-1.5 px-2 rounded-xl text-center ${isAuthority ? 'bg-brand-600 text-white font-black' : 'bg-white border text-slate-700'}`}
               >
                 Authority
               </button>
             </div>
           </div>
+
+          <div className="border-t border-gray-100 pt-2 space-y-1">
+            <Link
+              to="/search"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 rounded-lg text-xs font-bold text-slate-800 hover:bg-gray-50 flex items-center gap-2"
+            >
+              <Search className="w-4 h-4 text-brand-600" />
+              Search Directory
+            </Link>
+            <Link
+              to="/tracker"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 rounded-lg text-xs font-bold text-slate-800 hover:bg-gray-50 flex items-center gap-2"
+            >
+              <Clock className="w-4 h-4 text-slate-600" />
+              Case Tracker
+            </Link>
+            <Link
+              to="/authority"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 rounded-lg text-xs font-bold text-brand-700 bg-red-50"
+            >
+              Authority Review Queue
+            </Link>
+            <Link
+              to="/map"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 rounded-lg text-xs font-semibold text-slate-700 hover:bg-gray-50"
+            >
+              Live Map
+            </Link>
+            <Link
+              to="/analytics"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 rounded-lg text-xs font-semibold text-slate-700 hover:bg-gray-50"
+            >
+              Disaster Analytics
+            </Link>
+          </div>
         </div>
       )}
+
+      {/* Database Connection & Status Modal */}
+      <DatabaseStatusModal
+        isOpen={dbModalOpen}
+        onClose={() => setDbModalOpen(false)}
+        dbStatus={dbStatus}
+        onRefresh={fetchDbStatus}
+      />
     </header>
   );
 }

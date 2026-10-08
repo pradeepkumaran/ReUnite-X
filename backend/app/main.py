@@ -102,6 +102,21 @@ app.include_router(stats.router, prefix=api_v1_prefix)
 app.include_router(notifications.router, prefix=api_v1_prefix)
 
 
+@app.get("/api/v1/database/status", tags=["System"], summary="Database & Supabase Connection Status")
+@app.get("/database/status", tags=["System"], summary="Database & Supabase Connection Status")
+async def database_status():
+    """Returns whether live Supabase is connected or operating on SQLite local durability."""
+    from app.core.database import db
+    return db.get_connection_status()
+
+
+@app.post("/api/v1/database/sync", tags=["System"], summary="Trigger Manual Supabase Synchronization")
+async def trigger_supabase_sync():
+    """Synchronizes all locally stored records to Supabase."""
+    from app.core.database import db
+    return db.sync_all_to_supabase()
+
+
 @app.get("/health", tags=["System"], summary="Service Health Check")
 async def health_check():
     """Returns application health, version, and operational mode."""
@@ -119,4 +134,6 @@ async def root():
         "message": "Welcome to REUNITE-X Disaster Response API Gateway.",
         "documentation": "/docs",
         "health": "/health",
+        "database": "/database/status",
     }
+

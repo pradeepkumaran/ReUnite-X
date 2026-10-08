@@ -50,10 +50,11 @@ class SearchService:
         gender: Optional[GenderType] = None,
         user: Optional[AuthUser] = None
     ) -> List[PublicCaseSearchItem]:
+        is_privileged = bool(user and user.role in (
+            UserRole.AUTHORITY, UserRole.ADMIN, UserRole.VOLUNTEER,
+            UserRole.RESCUE_TEAM, UserRole.HOSPITAL, UserRole.SHELTER, UserRole.HOSPITAL_SHELTER
+        ))
         results: List[PublicCaseSearchItem] = []
-        is_privileged = user and user.role in (
-            UserRole.AUTHORITY, UserRole.ADMIN, UserRole.VOLUNTEER
-        )
 
         for cid, c in db.cases.items():
             # Exclude closed cases from public discovery

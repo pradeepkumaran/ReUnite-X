@@ -16,35 +16,38 @@ import api from '../api/client';
 
 export default function CaseTracker() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [query, setQuery] = useState(searchParams.get('q') || 'REX-2026-00001');
+  const [query, setQuery] = useState(searchParams.get('q') || '');
   const [caseData, setCaseData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const fetchCase = async (searchQuery) => {
-    if (!searchQuery) return;
+    if (!searchQuery || !searchQuery.trim()) return;
     setLoading(true);
     setError(null);
     try {
-      // First try listing cases matching case_number or ID
-      const res = await api.get('/cases');
-      const found = res.data.find(c => 
-        c.case_number.toLowerCase() === searchQuery.toLowerCase() || 
-        c.id === searchQuery ||
-        c.client_case_uuid === searchQuery
-      );
-
-      if (found) {
-        // Fetch full dossier
-        const detailRes = await api.get(`/cases/${found.id}`);
+      // Direct query attempt (backend supports ID, case_number, and client_case_uuid)
+      try {
+        const detailRes = await api.get(`/cases/${encodeURIComponent(searchQuery.trim())}`);
         setCaseData(detailRes.data);
-      } else {
-        // Direct query attempt
-        const detailRes = await api.get(`/cases/${searchQuery}`);
-        setCaseData(detailRes.data);
+        return;
+      } catch (directErr) {
+        // Fallback: list cases matching case_number or ID
+        const res = await api.get('/cases');
+        const found = res.data.find(c => 
+          c.case_number.toLowerCase() === searchQuery.trim().toLowerCase() || 
+          c.id === searchQuery.trim() ||
+          c.client_case_uuid === searchQuery.trim()
+        );
+        if (found) {
+          const detailRes = await api.get(`/cases/${found.id}`);
+          setCaseData(detailRes.data);
+          return;
+        }
+        throw directErr;
       }
     } catch (err) {
-      setError(`No active case found matching '${searchQuery}'. Please check the case number format (e.g. REX-2026-00001).`);
+      setError(`No active case found matching '${searchQuery}'. Please check your Case Number.`);
       setCaseData(null);
     } finally {
       setLoading(false);
@@ -53,11 +56,11 @@ export default function CaseTracker() {
 
   useEffect(() => {
     const q = searchParams.get('q');
-    if (q) {
+    if (q && q.trim()) {
       setQuery(q);
-      fetchCase(q);
+      fetchCase(q.trim());
     } else {
-      fetchCase('REX-2026-00001');
+      setCaseData(null);
     }
   }, [searchParams]);
 
@@ -129,6 +132,16 @@ export default function CaseTracker() {
       {error && (
         <div className="bg-red-50 p-4 rounded-2xl border border-red-200 text-sm text-brand-800 text-center font-medium">
           {error}
+        </div>
+      )}
+
+      {!caseData && !loading && !error && (
+        <div className="card-white text-center py-12 px-4 space-y-3 max-w-lg mx-auto">
+          <Clock className="w-10 h-10 text-gray-300 mx-auto" />
+          <h3 className="text-base font-bold text-slate-800">Enter a Case Number to Track</h3>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Enter your official registration number (e.g. REX-2026-00001) or UUID assigned during report submission to track search, rescue, hospital admissions, and reunification status in real time.
+          </p>
         </div>
       )}
 
@@ -216,7 +229,7 @@ export default function CaseTracker() {
               {caseData.photos?.length > 0 ? (
                 <div className="rounded-xl overflow-hidden border border-red-100 bg-gray-50">
                   <img
-                    src={`/photos/${caseData.photos[0].file_name}`}
+                    src={caseData.photos[0].signed_url || `/photos/${caseData.photos[0].file_name}`}
                     onError={(e) => {
                       e.target.onerror = null;
                       e.target.src = "https://images.unsplash.com/photo-1544717305-2782549b5136?w=400&auto=format&fit=crop&q=80";

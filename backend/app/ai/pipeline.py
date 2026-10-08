@@ -182,11 +182,14 @@ def run_candidate_matching(case_id: str) -> None:
         for matched_id in pair:
             db.cases[matched_id]["status"] = CaseStatus.CANDIDATE_FOUND.value
             db.cases[matched_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+            db.save_case(matched_id)
         candidate_count += 1
     if candidate_count:
         logger.info("Created %s authority-review candidate(s) for case %s.", candidate_count, case_id)
     elif case["status"] == CaseStatus.REPORTED.value:
         case["status"] = CaseStatus.SEARCHING.value
+        case["updated_at"] = datetime.now(timezone.utc).isoformat()
+        db.save_case(case_id)
 
 
 def _flag_possible_duplicates(case_id: str, embedding: list, person: Dict[str, Any]) -> None:

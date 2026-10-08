@@ -60,9 +60,13 @@ def _signed_photo_url(storage_path: str) -> Optional[str]:
 
 
 def _can_view_private_case(case: Dict[str, Any], user: Optional[AuthUser]) -> bool:
+    privileged_roles = (
+        UserRole.AUTHORITY, UserRole.ADMIN, UserRole.VOLUNTEER,
+        UserRole.RESCUE_TEAM, UserRole.HOSPITAL, UserRole.SHELTER, UserRole.HOSPITAL_SHELTER
+    )
     return bool(
         user and (
-            user.role in (UserRole.AUTHORITY, UserRole.ADMIN, UserRole.VOLUNTEER)
+            user.role in privileged_roles
             or case.get("reporter_id") == user.id
         )
     )
@@ -248,6 +252,17 @@ class CaseService:
     def get_case_by_id(case_id: str, user: Optional[AuthUser] = None) -> CaseDetailResponse:
         c = db.cases.get(case_id)
         if not c:
+            # Look up by case_number or client_case_uuid for resilient tracking
+            for item in db.cases.values():
+                if (
+                    item.get("case_number", "").lower() == case_id.lower()
+                    or item.get("client_case_uuid") == case_id
+                ):
+                    c = item
+                    case_id = c["id"]
+                    break
+
+        if not c:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Case with ID '{case_id}' not found."
@@ -294,7 +309,8 @@ class CaseService:
 
         # If user is public and person is minor, shield contact details
         is_privileged = bool(user and user.role in (
-            UserRole.AUTHORITY, UserRole.ADMIN, UserRole.VOLUNTEER
+            UserRole.AUTHORITY, UserRole.ADMIN, UserRole.VOLUNTEER,
+            UserRole.RESCUE_TEAM, UserRole.HOSPITAL, UserRole.SHELTER, UserRole.HOSPITAL_SHELTER
         ))
         is_case_owner = bool(user and c.get("reporter_id") == user.id)
         contact_phone = person.get("contact_phone")
@@ -395,10 +411,20 @@ class CaseService:
                 detail=f"Case with ID '{case_id}' not found."
             )
 
-        if user.role not in (UserRole.AUTHORITY, UserRole.ADMIN):
+        allowed_roles = (
+            UserRole.AUTHORITY, UserRole.ADMIN, UserRole.VOLUNTEER,
+            UserRole.RESCUE_TEAM, UserRole.HOSPITAL, UserRole.SHELTER, UserRole.HOSPITAL_SHELTER
+        )
+        if user.role not in allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only disaster authorities can update case status.",
+                detail="Only disaster authorities and designated responders can update case status.",
+            )
+
+        if target_status in (CaseStatus.REUNITED, CaseStatus.CLOSED) and user.role not in (UserRole.AUTHORITY, UserRole.ADMIN):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only disaster authorities can mark cases as reunited or closed.",
             )
 
         old_status = c["status"]
@@ -429,6 +455,7 @@ class CaseService:
         c["updated_at"] = now_iso
         if target_status == CaseStatus.CLOSED:
             c["closed_at"] = now_iso
+        db.save_case(case_id)
 
         # Log transition in audit trail
         db.audit_logs.append({

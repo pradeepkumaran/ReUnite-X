@@ -7,7 +7,12 @@ from enum import Enum
 
 class UserRole(str, Enum):
     PUBLIC = "public"
+    FAMILY = "family"
     VOLUNTEER = "volunteer"
+    RESCUE_TEAM = "rescue_team"
+    HOSPITAL = "hospital"
+    SHELTER = "shelter"
+    HOSPITAL_SHELTER = "hospital_shelter"
     AUTHORITY = "authority"
     ADMIN = "admin"
 

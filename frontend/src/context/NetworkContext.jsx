@@ -61,6 +61,10 @@ export const NetworkProvider = ({ children }) => {
     };
   }, []);
 
+  const toggleSimulateOffline = () => {
+    setIsOnline(prev => !prev);
+  };
+
   const triggerSync = async () => {
     if (!isOnline) {
       setSyncStatusMessage('Cannot sync while offline.');
@@ -72,6 +76,7 @@ export const NetworkProvider = ({ children }) => {
   return (
     <NetworkContext.Provider value={{
       isOnline,
+      toggleSimulateOffline,
       pendingCount,
       refreshPendingCount,
       isSyncing,

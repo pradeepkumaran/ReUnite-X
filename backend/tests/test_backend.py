@@ -5,8 +5,132 @@ Tests FastAPI application endpoints, role enforcement, validation, and responses
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app
+from app.core.database import db
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def setup_test_data():
+    """Seed test fixtures for tests and clean up afterwards so live database stays clean."""
+    disaster_id = "d0000000-0000-0000-0000-000000000001"
+    if disaster_id not in db.disasters:
+        db.disasters[disaster_id] = {
+            "id": disaster_id,
+            "name": "Cyclone Vardha Relief Zone",
+            "disaster_type": "cyclone",
+            "location_name": "Nagapattinam",
+            "center_lat": 10.7656,
+            "center_lng": 79.8424,
+            "radius_km": 45.0,
+            "status": "active",
+            "created_at": "2026-10-08T08:00:00Z"
+        }
+
+    case_a_id = "c0000000-0000-0000-0000-000000000001"
+    person_a_id = "p0000000-0000-0000-0000-000000000001"
+    db.cases[case_a_id] = {
+        "id": case_a_id,
+        "client_case_uuid": "a1b2c3d4-e5f6-4a1b-8c2d-3e4f5a6b7c8d",
+        "disaster_id": disaster_id,
+        "reporter_id": "11111111-1111-1111-1111-111111111111",
+        "case_number": "REX-2026-00001",
+        "type": "missing",
+        "status": "candidate_found",
+        "priority_level": 5,
+        "is_minor": True,
+        "consent_given": True,
+        "synced_from_offline": False,
+        "created_at": "2026-10-08T09:00:00Z",
+        "updated_at": "2026-10-08T09:00:00Z"
+    }
+    db.persons[person_a_id] = {
+        "id": person_a_id,
+        "case_id": case_a_id,
+        "full_name": "Aarav Sharma",
+        "approximate_age": 8,
+        "age_range_min": 7,
+        "age_range_max": 9,
+        "gender": "male",
+        "description": "Fair complexion, curly dark hair, responds to nickname Appu.",
+        "clothing_details": "Yellow cartoon t-shirt, blue denim shorts, white sneakers.",
+        "physical_marks": "Small birthmark behind left ear.",
+        "last_seen_lat": 10.7670,
+        "last_seen_lng": 79.8410,
+        "last_seen_address": "Old Bus Stand Relief Evacuation Point, Nagapattinam",
+        "last_seen_time": "2026-10-08T06:00:00Z",
+        "contact_person_name": "Ananya Sharma",
+        "contact_phone": "+919876543210",
+        "contact_email": "ananya@example.com",
+        "contact_relationship": "Mother",
+        "medical_notes": "Requires daily asthma inhaler medication",
+        "is_vulnerable": True,
+        "vulnerability_reasons": ["minor_under_12"],
+        "created_at": "2026-10-08T09:00:00Z",
+        "updated_at": "2026-10-08T09:00:00Z"
+    }
+    case_b_id = "c0000000-0000-0000-0000-000000000002"
+    person_b_id = "p0000000-0000-0000-0000-000000000002"
+    db.cases[case_b_id] = {
+        "id": case_b_id,
+        "client_case_uuid": "f9e8d7c6-b5a4-4f9e-8d7c-6b5a4f9e8d7c",
+        "disaster_id": disaster_id,
+        "reporter_id": "22222222-2222-2222-2222-222222222222",
+        "case_number": "REX-2026-00002",
+        "type": "found",
+        "status": "candidate_found",
+        "priority_level": 4,
+        "is_minor": True,
+        "consent_given": True,
+        "synced_from_offline": True,
+        "created_at": "2026-10-08T11:00:00Z",
+        "updated_at": "2026-10-08T11:00:00Z"
+    }
+    db.persons[person_b_id] = {
+        "id": person_b_id,
+        "case_id": case_b_id,
+        "full_name": "Unidentified Boy (says Appu)",
+        "approximate_age": 8,
+        "age_range_min": 7,
+        "age_range_max": 9,
+        "gender": "male",
+        "description": "Young boy found alone near river embankment.",
+        "clothing_details": "Mud-stained yellow t-shirt, blue shorts.",
+        "physical_marks": "Small mark behind left ear.",
+        "last_seen_lat": 10.7712,
+        "last_seen_lng": 79.8450,
+        "last_seen_address": "Camp Delta 3 Relief Shelter, Nagapattinam",
+        "last_seen_time": "2026-10-08T10:30:00Z",
+        "contact_person_name": "Rohan Kumar",
+        "contact_phone": "+919876543211",
+        "contact_email": "rohan@redcross.org",
+        "contact_relationship": "Volunteer",
+        "is_vulnerable": True,
+        "vulnerability_reasons": ["unaccompanied_minor"],
+        "created_at": "2026-10-08T11:00:00Z",
+        "updated_at": "2026-10-08T11:00:00Z"
+    }
+    match_id = "m0000000-0000-0000-0000-000000000001"
+    db.match_candidates[match_id] = {
+        "id": match_id,
+        "missing_case_id": case_a_id,
+        "found_case_id": case_b_id,
+        "missing_person_id": person_a_id,
+        "found_person_id": person_b_id,
+        "face_similarity": 0.92,
+        "age_gender_score": 0.95,
+        "location_score": 0.90,
+        "text_score": 0.85,
+        "match_score": 90.5,
+        "priority_score": 96.0,
+        "score_explanation": {"face_similarity_pct": 92.0},
+        "status": "pending_review",
+        "reviewed_by": None,
+        "reviewed_at": None,
+        "created_at": "2026-10-08T11:10:00Z"
+    }
+    yield
+    db.clear_all()
 
 
 def test_health_check():
@@ -258,3 +382,48 @@ def test_send_notification():
     notif = response.json()
     assert notif["status"] == "pending"
     assert notif["recipient_target"] == "family@example.com"
+
+
+def test_get_case_by_case_number():
+    """Verify looking up a case dossier using its case_number string."""
+    response = client.get("/api/v1/cases/REX-2026-00001")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["case_number"] == "REX-2026-00001"
+
+
+def test_rescue_team_role_permissions():
+    """Verify rescue team role can view private medical info and update operational status."""
+    # Rescue team can view privileged details like medical notes
+    response = client.get(
+        "/api/v1/cases/c0000000-0000-0000-0000-000000000001",
+        headers={"Authorization": "Bearer mock-rescue_team"},
+    )
+    assert response.status_code == 200
+    assert response.json()["person"]["medical_notes"] is not None
+
+    # Rescue team can update operational status
+    update_resp = client.patch(
+        "/api/v1/cases/c0000000-0000-0000-0000-000000000001/status",
+        json={"status": "searching", "notes": "Rescue unit deployed to sector 4"},
+        headers={"Authorization": "Bearer mock-rescue_team"},
+    )
+    assert update_resp.status_code == 200
+
+
+def test_hospital_and_shelter_roles():
+    """Verify hospital and shelter roles can authenticate and access responders endpoints."""
+    # Hospital user
+    hosp_resp = client.get(
+        "/api/v1/cases/c0000000-0000-0000-0000-000000000001",
+        headers={"Authorization": "Bearer mock-hospital"},
+    )
+    assert hosp_resp.status_code == 200
+
+    # Shelter user
+    shelter_resp = client.get(
+        "/api/v1/cases/c0000000-0000-0000-0000-000000000001",
+        headers={"Authorization": "Bearer mock-shelter"},
+    )
+    assert shelter_resp.status_code == 200
+

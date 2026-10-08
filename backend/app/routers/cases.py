@@ -114,7 +114,15 @@ async def get_case(
 async def update_case_status(
     id: str,
     payload: CaseStatusUpdate,
-    user: AuthUser = Depends(require_role(UserRole.AUTHORITY, UserRole.ADMIN)),
+    user: AuthUser = Depends(require_role(
+        UserRole.AUTHORITY,
+        UserRole.ADMIN,
+        UserRole.RESCUE_TEAM,
+        UserRole.HOSPITAL,
+        UserRole.SHELTER,
+        UserRole.HOSPITAL_SHELTER,
+        UserRole.VOLUNTEER,
+    )),
 ):
     """
     Updates the operational lifecycle status of a case.

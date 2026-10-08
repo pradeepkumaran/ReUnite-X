@@ -31,15 +31,18 @@ class MatchService:
     ) -> List[MatchCandidateResponse]:
         results: List[MatchCandidateResponse] = []
 
+        # Pre-fetch case summaries once for ultra-fast lookup instead of calling inside loop
+        all_cases = CaseService.get_cases(limit=1000, user=authority)
+        cases_map = {item.id: item for item in all_cases}
+
         for mid, m in db.match_candidates.items():
             if status_filter and m["status"] != status_filter.value:
                 continue
 
-            all_cases = CaseService.get_cases(limit=1000, user=authority)
             missing_case_details = CaseService.get_case_by_id(m["missing_case_id"], authority)
             found_case_details = CaseService.get_case_by_id(m["found_case_id"], authority)
-            missing_case = next((item for item in all_cases if item.id == m["missing_case_id"]), None)
-            found_case = next((item for item in all_cases if item.id == m["found_case_id"]), None)
+            missing_case = cases_map.get(m["missing_case_id"])
+            found_case = cases_map.get(m["found_case_id"])
 
             results.append(
                 MatchCandidateResponse(
@@ -94,6 +97,7 @@ class MatchService:
         m["status"] = MatchStatus.VERIFIED.value
         m["reviewed_by"] = authority.id
         m["reviewed_at"] = now_iso
+        db.save_match_candidate(match_id)
 
         # Update both cases to VERIFIED
         missing_case = db.cases.get(m["missing_case_id"])
@@ -102,10 +106,12 @@ class MatchService:
         if missing_case:
             missing_case["status"] = CaseStatus.VERIFIED.value
             missing_case["updated_at"] = now_iso
+            db.save_case(m["missing_case_id"])
 
         if found_case:
             found_case["status"] = CaseStatus.VERIFIED.value
             found_case["updated_at"] = now_iso
+            db.save_case(m["found_case_id"])
 
         # Update confirmed location if authority supplied one
         if request.verified_location_lat is not None and request.verified_location_lng is not None:
@@ -115,6 +121,7 @@ class MatchService:
                     p["last_seen_lng"] = request.verified_location_lng
                     if request.verified_location_name:
                         p["last_seen_address"] = request.verified_location_name
+                    db.save_person(p["id"])
 
         # Create verification record
         verification_record = {
@@ -222,6 +229,7 @@ class MatchService:
         m["status"] = MatchStatus.REJECTED.value
         m["reviewed_by"] = authority.id
         m["reviewed_at"] = now_iso
+        db.save_match_candidate(match_id)
         verification_id = str(uuid.uuid4())
         db.verifications[verification_id] = {
             "id": verification_id,

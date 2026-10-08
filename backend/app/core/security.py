@@ -85,18 +85,37 @@ async def get_current_user(
 
     # Test / Dev convenience bypass for mock testing
     if settings.DEBUG and token.startswith("mock-"):
-        # Allows tokens like "mock-authority", "mock-volunteer", "mock-public", "mock-admin"
-        mock_role_str = token.replace("mock-", "")
-        role = UserRole.PUBLIC
-        try:
-            role = UserRole(mock_role_str)
-        except ValueError:
-            pass
+        # Allows tokens like "mock-authority", "mock-volunteer", "mock-public", "mock-rescue_team", "mock-hospital", "mock-shelter", "mock-family"
+        raw_role = token.replace("mock-", "").lower().strip().replace("-", "_").replace("/", "_").replace(" ", "_")
+        role_map = {
+            "public": UserRole.PUBLIC,
+            "family": UserRole.FAMILY,
+            "volunteer": UserRole.VOLUNTEER,
+            "rescue_team": UserRole.RESCUE_TEAM,
+            "rescue": UserRole.RESCUE_TEAM,
+            "hospital": UserRole.HOSPITAL,
+            "shelter": UserRole.SHELTER,
+            "hospital_shelter": UserRole.HOSPITAL_SHELTER,
+            "authority": UserRole.AUTHORITY,
+            "admin": UserRole.ADMIN,
+        }
+        role = role_map.get(raw_role, UserRole.PUBLIC)
+        role_titles = {
+            UserRole.RESCUE_TEAM: "NDRF Rescue Team Unit 7",
+            UserRole.HOSPITAL: "Emergency Hospital Medical Ward",
+            UserRole.SHELTER: "Relief Camp Shelter Desk",
+            UserRole.HOSPITAL_SHELTER: "Hospital & Shelter Coordinator",
+            UserRole.FAMILY: "Family Reporter",
+            UserRole.AUTHORITY: "NDRF Authority Commander",
+            UserRole.ADMIN: "Emergency Ops Administrator",
+            UserRole.VOLUNTEER: "Field Volunteer Responder",
+            UserRole.PUBLIC: "Citizen User",
+        }
         return AuthUser(
-            id=f"mock-user-{mock_role_str}-id",
-            email=f"{mock_role_str}@reunite-x.org",
+            id=f"mock-user-{role.value}-id",
+            email=f"{role.value}@reunite-x.org",
             role=role,
-            full_name=f"Mock {mock_role_str.capitalize()} Officer"
+            full_name=role_titles.get(role, f"Mock {role.value.capitalize()} Responder")
         )
 
     payload = decode_supabase_jwt(token)
@@ -110,12 +129,21 @@ async def get_current_user(
     # Extract user metadata or app metadata role
     app_metadata = payload.get("app_metadata", {})
     user_metadata = payload.get("user_metadata", {})
-    role_str = app_metadata.get("role") or user_metadata.get("role") or "public"
+    role_str = (app_metadata.get("role") or user_metadata.get("role") or "public").lower().strip().replace("-", "_").replace("/", "_").replace(" ", "_")
 
-    try:
-        user_role = UserRole(role_str)
-    except ValueError:
-        user_role = UserRole.PUBLIC
+    role_map = {
+        "public": UserRole.PUBLIC,
+        "family": UserRole.FAMILY,
+        "volunteer": UserRole.VOLUNTEER,
+        "rescue_team": UserRole.RESCUE_TEAM,
+        "rescue": UserRole.RESCUE_TEAM,
+        "hospital": UserRole.HOSPITAL,
+        "shelter": UserRole.SHELTER,
+        "hospital_shelter": UserRole.HOSPITAL_SHELTER,
+        "authority": UserRole.AUTHORITY,
+        "admin": UserRole.ADMIN,
+    }
+    user_role = role_map.get(role_str, UserRole.PUBLIC)
 
     return AuthUser(
         id=user_id,

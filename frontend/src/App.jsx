@@ -6,6 +6,7 @@ import { NetworkProvider } from './context/NetworkContext';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import StatusBanner from './components/common/StatusBanner';
+import SyncQueueDrawer from './components/offline/SyncQueueDrawer';
 
 import Landing from './pages/Landing';
 import Login from './pages/Login';
@@ -15,6 +16,10 @@ import ReportFound from './pages/ReportFound';
 import CaseTracker from './pages/CaseTracker';
 import Search from './pages/Search';
 import AuthorityDashboard from './pages/AuthorityDashboard';
+import RescueTeamDashboard from './pages/RescueTeamDashboard';
+import HospitalDashboard from './pages/HospitalDashboard';
+import ShelterDashboard from './pages/ShelterDashboard';
+import InteractiveWorkflowHub from './pages/InteractiveWorkflowHub';
 import MapView from './pages/MapView';
 import Analytics from './pages/Analytics';
 
@@ -29,6 +34,10 @@ export default function App() {
             <main className="flex-grow">
               <Routes>
                 <Route path="/" element={<Landing />} />
+                <Route path="/workflow" element={<Navigate to="/" replace />} />
+                <Route path="/rescue-team" element={<RescueTeamDashboard />} />
+                <Route path="/hospital" element={<HospitalDashboard />} />
+                <Route path="/shelter" element={<ShelterDashboard />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
                 <Route path="/report-missing" element={<ReportMissing />} />
@@ -41,6 +50,7 @@ export default function App() {
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </main>
+            <SyncQueueDrawer />
             <Footer />
           </div>
         </BrowserRouter>
