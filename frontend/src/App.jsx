@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { NetworkProvider } from './context/NetworkContext';
 
@@ -27,7 +27,7 @@ export default function App() {
   return (
     <NetworkProvider>
       <AuthProvider>
-        <BrowserRouter>
+        <HashRouter>
           <div className="min-h-screen flex flex-col bg-gray-50 text-slate-900 selection:bg-brand-500 selection:text-white">
             <StatusBanner />
             <Navbar />
@@ -53,7 +53,7 @@ export default function App() {
             <SyncQueueDrawer />
             <Footer />
           </div>
-        </BrowserRouter>
+        </HashRouter>
       </AuthProvider>
     </NetworkProvider>
   );
