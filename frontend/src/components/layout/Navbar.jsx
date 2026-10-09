@@ -26,6 +26,7 @@ import {
 import { useAuth, ROLE_PROFILES } from '../../context/AuthContext';
 import { useNetwork } from '../../context/NetworkContext';
 import apiClient from '../../api/client';
+import { checkSupabaseDirectStatus } from '../../services/supabase';
 import DatabaseStatusModal from '../common/DatabaseStatusModal';
 
 export default function Navbar() {
@@ -41,9 +42,27 @@ export default function Navbar() {
   const fetchDbStatus = async () => {
     try {
       const res = await apiClient.get('/database/status');
-      setDbStatus(res.data);
+      if (res.data && res.data.supabase_connected) {
+        setDbStatus(res.data);
+        return;
+      }
+      const direct = await checkSupabaseDirectStatus();
+      setDbStatus({
+        ...(res.data || {}),
+        ...direct,
+        supabase_connected: Boolean(direct?.supabase_connected || res.data?.supabase_connected),
+      });
     } catch {
-      // Offline or backend temporarily down
+      try {
+        const direct = await checkSupabaseDirectStatus();
+        setDbStatus(direct);
+      } catch {
+        setDbStatus({
+          supabase_configured: false,
+          supabase_connected: false,
+          mode: 'Offline IndexedDB Store',
+        });
+      }
     }
   };
 

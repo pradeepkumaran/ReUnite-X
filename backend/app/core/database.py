@@ -13,6 +13,12 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from concurrent.futures import ThreadPoolExecutor
 
+try:
+    import truststore
+    truststore.inject_into_ssl()
+except Exception:
+    pass
+
 from supabase import create_client, Client
 from app.core.config import settings
 from app.core.logging import logger
