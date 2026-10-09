@@ -150,9 +150,52 @@ export default function HospitalDashboard() {
         photo_file: null,
         photo_preview: null,
       });
-      fetchPatients();
     } catch (err) {
-      alert('Error admitting patient: ' + (err.response?.data?.detail || err.message));
+      console.warn('API error, saving admitted patient locally in Dexie IndexedDB:', err);
+      try {
+        await saveReportOffline({
+          clientCaseUuid: clientUuid,
+          type: 'found',
+          disasterId: payload.disaster_id,
+          consentGiven: true,
+          person: payload.person,
+          photoBlob: form.photo_file,
+          photoDataUrl: form.photo_preview,
+          fileName: form.photo_file?.name || 'patient-photo.jpg',
+          mimeType: form.photo_file?.type || 'image/jpeg',
+        });
+        setPendingCount(prev => prev + 1);
+        setPatients(prev => [
+          {
+            id: clientUuid,
+            case_number: `OFFLINE-${clientUuid.slice(0, 8)}`,
+            status: 'reported',
+            person: payload.person,
+            created_at: new Date().toISOString()
+          },
+          ...prev
+        ]);
+        alert(`Patient admitted & saved locally (Offline Mode). Case: OFFLINE-${clientUuid.slice(0, 8)}`);
+        setShowAdmitModal(false);
+        setForm({
+          full_name: '',
+          approximate_age: '',
+          gender: 'unknown',
+          description: '',
+          clothing_details: '',
+          physical_marks: '',
+          hospital_name: '',
+          ward_id: '',
+          attending_physician: '',
+          clinical_condition: '',
+          triage_priority: 'urgent',
+          is_vulnerable: false,
+          photo_file: null,
+          photo_preview: null,
+        });
+      } catch (storageErr) {
+        alert('Could not save patient report locally: ' + storageErr.message);
+      }
     } finally {
       setActionLoading(false);
     }

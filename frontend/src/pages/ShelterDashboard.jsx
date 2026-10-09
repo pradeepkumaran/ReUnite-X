@@ -150,9 +150,52 @@ export default function ShelterDashboard() {
         photo_file: null,
         photo_preview: null,
       });
-      fetchResidents();
     } catch (err) {
-      alert('Error registering resident: ' + (err.response?.data?.detail || err.message));
+      console.warn('API error, saving shelter resident locally in Dexie IndexedDB:', err);
+      try {
+        await saveReportOffline({
+          clientCaseUuid: clientUuid,
+          type: 'found',
+          disasterId: payload.disaster_id,
+          consentGiven: true,
+          person: payload.person,
+          photoBlob: form.photo_file,
+          photoDataUrl: form.photo_preview,
+          fileName: form.photo_file?.name || 'resident-photo.jpg',
+          mimeType: form.photo_file?.type || 'image/jpeg',
+        });
+        setPendingCount(prev => prev + 1);
+        setResidents(prev => [
+          {
+            id: clientUuid,
+            case_number: `OFFLINE-${clientUuid.slice(0, 8)}`,
+            status: 'reported',
+            person: payload.person,
+            created_at: new Date().toISOString()
+          },
+          ...prev
+        ]);
+        alert(`Resident checked in & saved locally (Offline Mode). Case: OFFLINE-${clientUuid.slice(0, 8)}`);
+        setShowIntakeModal(false);
+        setForm({
+          full_name: '',
+          approximate_age: '',
+          gender: 'unknown',
+          description: '',
+          clothing_details: '',
+          physical_marks: '',
+          shelter_facility: '',
+          tent_block_id: '',
+          camp_officer: '',
+          special_needs: '',
+          contact_phone: '',
+          is_vulnerable: false,
+          photo_file: null,
+          photo_preview: null,
+        });
+      } catch (storageErr) {
+        alert('Could not save resident report locally: ' + storageErr.message);
+      }
     } finally {
       setActionLoading(false);
     }

@@ -159,17 +159,14 @@ export default function ReportFound() {
         full_name: payload.person.full_name
       });
     } catch (err) {
-      if (!err.response) {
-        try {
-          await queueLocally();
-          return;
-        } catch (storageError) {
-          alert(`Network failed and this report could not be saved locally: ${storageError.message}`);
-        }
+      console.warn("Network or server unavailable, queuing found report locally in Dexie IndexedDB:", err);
+      try {
+        await queueLocally();
+      } catch (storageError) {
+        setIsSubmitting(false);
+        console.error("Local storage error:", storageError);
+        alert(`Storage error: ${storageError.message}`);
       }
-      setIsSubmitting(false);
-      console.error("Submission failed:", err);
-      alert("Error submitting found person report.");
     }
   };
 

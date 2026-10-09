@@ -158,7 +158,53 @@ export default function RescueTeamDashboard() {
       });
       fetchRescuedCases();
     } catch (err) {
-      alert('Error registering rescued person: ' + (err.response?.data?.detail || err.message));
+      console.warn('API error, falling back to local offline storage for rescued person:', err);
+      try {
+        await saveReportOffline({
+          clientCaseUuid: clientUuid,
+          type: 'found',
+          disasterId: payload.disaster_id,
+          consentGiven: true,
+          person: payload.person,
+          photoBlob: form.photo_file,
+          photoDataUrl: form.photo_preview,
+          fileName: form.photo_file?.name || 'rescued-person.jpg',
+          mimeType: form.photo_file?.type || 'image/jpeg',
+        });
+        setPendingCount(prev => prev + 1);
+        setRescuedCases(prev => [
+          {
+            id: clientUuid,
+            case_number: `OFFLINE-${clientUuid.slice(0, 8)}`,
+            status: 'reported',
+            person: payload.person,
+            created_at: new Date().toISOString()
+          },
+          ...prev
+        ]);
+        alert(`Rescued person registered and saved locally (Offline Mode). Case: OFFLINE-${clientUuid.slice(0, 8)}`);
+        setShowRegisterModal(false);
+        setForm({
+          full_name: '',
+          approximate_age: '',
+          gender: 'unknown',
+          description: '',
+          clothing_details: '',
+          physical_marks: '',
+          triage_tag: 'yellow',
+          rescue_location_name: '',
+          rescue_lat: 10.7685,
+          rescue_lng: 79.8430,
+          transport_destination: '',
+          rescue_unit: '',
+          medical_condition: '',
+          is_vulnerable: false,
+          photo_file: null,
+          photo_preview: null,
+        });
+      } catch (storageErr) {
+        alert('Could not save report locally: ' + storageErr.message);
+      }
     } finally {
       setActionLoading(false);
     }
