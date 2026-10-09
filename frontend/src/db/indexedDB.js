@@ -129,8 +129,20 @@ export async function clearSyncedItems() {
 
   if (uuids.length) {
     await db.transaction('rw', db.pendingCases, db.pendingPhotos, async () => {
-    await db.pendingCases.where('clientCaseUuid').anyOf(uuids).delete();
-    await db.pendingPhotos.where('clientCaseUuid').anyOf(uuids).delete();
+      await db.pendingCases.where('clientCaseUuid').anyOf(uuids).delete();
+      await db.pendingPhotos.where('clientCaseUuid').anyOf(uuids).delete();
     });
   }
 }
+
+/**
+ * Completely purges all local offline test cases and photos to keep storage fresh.
+ */
+export async function clearAllOfflineData() {
+  await db.transaction('rw', db.pendingCases, db.pendingPhotos, db.syncStatus, async () => {
+    await db.pendingCases.clear();
+    await db.pendingPhotos.clear();
+    await db.syncStatus.clear();
+  });
+}
+

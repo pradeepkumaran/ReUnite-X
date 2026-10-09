@@ -564,7 +564,7 @@ class PersistentDatabase:
         """Clear all cases and records (used for test setup)."""
         with self._lock:
             cur = self._conn.cursor()
-            for t in ["cases", "persons", "photos", "face_embeddings", "match_candidates", "verifications", "audit_logs"]:
+            for t in ["cases", "persons", "photos", "face_embeddings", "match_candidates", "verifications", "notifications", "sync_logs", "audit_logs"]:
                 cur.execute(f"DELETE FROM store_{t}")
             cur.execute("UPDATE store_meta SET value = '1' WHERE key = 'case_counter'")
             self._conn.commit()
@@ -574,6 +574,8 @@ class PersistentDatabase:
             self.face_embeddings.clear()
             self.match_candidates.clear()
             self.verifications.clear()
+            self.notifications.clear()
+            self.sync_logs.clear()
             self.audit_logs.clear()
             self._case_counter = 1
 

@@ -118,6 +118,19 @@ async def trigger_supabase_sync():
     return db.sync_all_to_supabase()
 
 
+@app.post("/api/v1/database/reset", tags=["System"], summary="Reset and Clear All Registered Test Data")
+@app.post("/database/reset", tags=["System"], summary="Reset and Clear All Registered Test Data")
+async def reset_database():
+    """Clears all test cases, persons, and log entries to maintain a clean operational state."""
+    from app.core.database import db
+    db.clear_all()
+    return {
+        "status": "success",
+        "message": "All test records cleared successfully. Database is fresh.",
+        "counts": db.get_connection_status()["counts"]
+    }
+
+
 @app.get("/health", tags=["System"], summary="Service Health Check")
 async def health_check():
     """Returns application health, version, and operational mode."""

@@ -1,13 +1,45 @@
 import React, { useState } from 'react';
-import { Database, CheckCircle, AlertTriangle, RefreshCw, X, Server, Shield, ExternalLink, HardDrive } from 'lucide-react';
+import { Database, CheckCircle, AlertTriangle, RefreshCw, X, Server, Shield, ExternalLink, HardDrive, Trash2 } from 'lucide-react';
 import apiClient from '../../api/client';
 import { checkSupabaseDirectStatus } from '../../services/supabase';
+import { clearAllOfflineData } from '../../db/indexedDB';
 
 export default function DatabaseStatusModal({ isOpen, onClose, dbStatus, onRefresh }) {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
 
   if (!isOpen) return null;
+
+  const handleReset = async () => {
+    if (!window.confirm('Are you sure you want to clear all registered test records and keep the system fresh?')) return;
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      await clearAllOfflineData();
+      await apiClient.post('/database/reset');
+      setSyncResult({
+        status: 'success',
+        message: 'All test records purged successfully. Database is fresh and clean.',
+      });
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      try {
+        await clearAllOfflineData();
+        setSyncResult({
+          status: 'success',
+          message: 'Local browser storage cleared and refreshed.',
+        });
+        if (onRefresh) onRefresh();
+      } catch (e) {
+        setSyncResult({
+          status: 'error',
+          message: err.message || 'Reset failed.',
+        });
+      }
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const handleSync = async () => {
     setSyncing(true);
@@ -144,6 +176,15 @@ export default function DatabaseStatusModal({ isOpen, onClose, dbStatus, onRefre
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 Refresh Status
+              </button>
+              <button
+                onClick={handleReset}
+                disabled={syncing}
+                title="Purge all registered test cases and reset database to fresh"
+                className="px-3 py-1.5 rounded-xl text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 disabled:opacity-50 transition flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Clear Test Data
               </button>
               {isConnected && (
                 <button
